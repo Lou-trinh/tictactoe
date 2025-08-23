@@ -4,7 +4,7 @@ import {
   WebSocketServer,
   MessageBody,
 } from '@nestjs/websockets';
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Game } from './game.schema';
@@ -15,7 +15,7 @@ interface GameState {
   players: string[];
 }
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({ cors: { origin: 'http://localhost:5173' } })
 export class GameGateway {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};
@@ -24,8 +24,10 @@ export class GameGateway {
 
   @SubscribeMessage('joinGame')
   handleJoin(
+    client: Socket,
     @MessageBody() { roomId, playerId }: { roomId: string; playerId: string },
   ) {
+    console.log(`joinGame received: roomId=${roomId}, playerId=${playerId}`);
     if (!this.games[roomId]) {
       this.games[roomId] = {
         board: Array<string | null>(9).fill(null),
@@ -38,45 +40,40 @@ export class GameGateway {
     ) {
       this.games[roomId].players.push(playerId);
     } else {
-      this.server
-        .to(playerId)
-        .emit('error', { message: 'Room is full or player already joined' });
+      client.emit('error', {
+        message: 'Room is full or player already joined',
+      });
       return;
     }
     console.log(
       `Player ${playerId} joined room ${roomId}. Players: ${this.games[roomId].players.join(', ')}`,
-    ); // Sửa lỗi ESLint
+    );
     this.server.to(roomId).emit('gameState', this.games[roomId]);
   }
 
   @SubscribeMessage('makeMove')
   async handleMove(
+    client: Socket,
     @MessageBody()
     {
       roomId,
       index,
       player,
-    }: {
-      roomId: string;
-      index: number;
-      player: string;
-    },
+    }: { roomId: string; index: number; player: string },
   ) {
     const game = this.games[roomId];
     if (!game) {
-      this.server.to(player).emit('error', { message: 'Room does not exist' });
+      client.emit('error', { message: 'Room does not exist' });
       return;
     }
     if (game.players.length < 2) {
-      this.server
-        .to(player)
-        .emit('error', { message: 'Waiting for another player' });
+      client.emit('error', { message: 'Waiting for another player' });
       return;
     }
     if (game.board[index] === null && game.currentPlayer === player) {
       game.board[index] = player;
       game.currentPlayer = player === 'X' ? 'O' : 'X';
-      console.log(`Move made in room ${roomId}:`, game);
+      console.log(`Move made in room ${roomId} by ${player}:`, game);
       this.server.to(roomId).emit('gameState', game);
 
       const winner = this.checkWinner(game.board);
@@ -90,6 +87,11 @@ export class GameGateway {
         });
         delete this.games[roomId];
       }
+    } else {
+      client.emit('error', { message: 'Invalid move' });
+      console.log(
+        `Invalid move by ${player} in room ${roomId}: index=${index}, currentPlayer=${game.currentPlayer}`,
+      );
     }
   }
 
