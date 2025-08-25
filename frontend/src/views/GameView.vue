@@ -143,7 +143,7 @@ export default defineComponent({
     };
 
     const initSocket = () => {
-      const s = io('http://localhost:3000');
+      const s = io('https://tic-tac-toe-backend-production-8fc6.up.railway.app');
       socket.value = s;
 
       s.on('connect', () => {

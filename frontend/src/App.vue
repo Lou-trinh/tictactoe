@@ -214,7 +214,7 @@ export default defineComponent({
     };
 
     const initSocket = () => {
-      socket = io('http://localhost:3000'); // Thay đổi URL nếu server chạy ở địa chỉ khác
+      socket = io('https://tic-tac-toe-backend-production-8fc6.up.railway.app'); // Thay đổi URL nếu server chạy ở địa chỉ khác
 
       socket.on('connect', () => {
         console.log('Connected to server');
