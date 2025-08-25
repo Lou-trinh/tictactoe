@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Game, GameSchema } from './game.schema';
-import { GameGateway } from './game.gateway'; // Sẽ tạo sau
+import { GameGateway } from './game.gateway';
+import { Game, GameSchema } from './game.schema'; // Đảm bảo bạn có GameSchema
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Game.name, schema: GameSchema }]),
   ],
-  providers: [GameGateway],
+  providers: [GameGateway], // Khai báo GameGateway là một provider
 })
 export class GameModule {}
