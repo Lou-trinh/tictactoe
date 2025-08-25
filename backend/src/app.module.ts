@@ -7,7 +7,7 @@ import { GameModule } from './game/game.module';
 @Module({
   imports: [
     MongooseModule.forRoot(
-      'mongodb://mongo:wIJRXRTynxlIArjGuFoCobkodIYGFQSS@trolley.proxy.rlwy.net:43934',
+      'mongodb://mongo:SPLiyfZWsazGtAuvvaxfvAVVLdlmimrE@gondola.proxy.rlwy.net:53244',
     ), // Thay bằng URI MongoDB của bạn
     GameModule,
   ],
