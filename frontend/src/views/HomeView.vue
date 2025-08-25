@@ -35,7 +35,7 @@ export default defineComponent({
 
     onMounted(() => {
       // Khởi tạo kết nối WebSocket với server
-      socket = io('https://tic-tac-toe-backend-production-8fc6.up.railway.app');
+      socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
 
       socket.on('connect', () => {
         console.log('CLIENT: Đã kết nối với server!');
