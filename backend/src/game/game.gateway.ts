@@ -1,10 +1,10 @@
 import {
   SubscribeMessage,
-  WebSocketGateway,
   WebSocketServer,
   MessageBody,
   OnGatewayDisconnect,
   ConnectedSocket,
+  WebSocketGateway,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { InjectModel } from '@nestjs/mongoose';
@@ -17,7 +17,7 @@ interface GameState {
   players: { X?: string; O?: string }; // Map symbol to socketId
 }
 
-@WebSocketGateway({ cors: { origin: 'http://localhost:5173' } })
+@WebSocketGateway({ cors: { origin: true } })
 export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};
@@ -49,7 +49,7 @@ export class GameGateway implements OnGatewayDisconnect {
   }
 
   @SubscribeMessage('joinGame')
-  handleJoinGame(
+  async handleJoinGame(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { roomId: string },
   ) {
@@ -64,14 +64,14 @@ export class GameGateway implements OnGatewayDisconnect {
         players: {},
       };
       this.games[roomId] = game;
-      client.join(roomId);
+      await client.join(roomId);
       game.players.X = client.id;
       void client.emit('playerAssigned', { playerSymbol: 'X' });
       console.log(`Player X joined new room: ${roomId}`);
     } else if (!game.players.O && game.players.X !== client.id) {
       // Add the second player to the existing room
       game.players.O = client.id;
-      client.join(roomId);
+      await client.join(roomId);
       void client.emit('playerAssigned', { playerSymbol: 'O' });
       void this.server.to(roomId).emit('gameReady', { roomId });
       void this.server.to(roomId).emit('gameState', {
