@@ -1,3 +1,4 @@
+```vue
 <template>
   <div class="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex flex-col items-center justify-center text-white p-4 md:p-8">
     <div class="backdrop-blur-xl bg-white/10 rounded-3xl p-6 md:p-12 max-w-lg w-full shadow-2xl border border-white/20 animate-fade-in">
@@ -252,10 +253,7 @@ export default defineComponent({
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
-
-        // Cố gắng lấy playerCount từ payload, nếu không có thì giữ nguyên giá trị cũ
-        playerCount.value = payload.playerCount ?? playerCount.value;
-
+        playerCount.value = payload.playerCount;
         winner.value = payload.winner ?? null;
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });

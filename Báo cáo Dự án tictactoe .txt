@@ -1,7 +1,9 @@
 Báo cáo Dự án Tic-Tac-Toe
 1. Tổng quan về dự ánF
 
-Đây là một dự án game Tic-Tac-Toe có thể chơi online với nhiều người. Mục đích chính là tạo ra một sân chơi trên web. Backend của game là NestJS, còn Frontend thì do Vue.js đảm nhiệm. Ứng dụng sử dụng WebSocket để hỗ trợ tương tác thời gian thực giữa client và server. Dữ liệu game được lưu trên MongoDB. Toàn bộ mã nguồn để trên GitHub và được triển khai lên Railway để chạy tự động, cực kỳ tiện lợi.
+Đây là một dự án game Tic-Tac-Toe có thể chơi online với nhiều người. Mục đích chính là tạo ra một sân chơi trên web. Backend của game là NestJS, còn Frontend
+thì do Vue.js đảm nhiệm. Ứng dụng sử dụng WebSocket để hỗ trợ tương tác thời gian thực giữa client và server. Dữ liệu game được lưu trên MongoDB. Toàn bộ mã
+nguồn để trên GitHub và được triển khai lên Railway để chạy tự động, cực kỳ tiện lợi.
 
 2. Những Công nghệ chính trong dự án
 

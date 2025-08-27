@@ -1,10 +1,10 @@
 import {
   SubscribeMessage,
+  WebSocketGateway,
   WebSocketServer,
   MessageBody,
   OnGatewayDisconnect,
   ConnectedSocket,
-  WebSocketGateway,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { InjectModel } from '@nestjs/mongoose';
@@ -14,7 +14,7 @@ import { Game } from './game.schema';
 interface GameState {
   board: (string | null)[];
   currentPlayer: string;
-  players: { X?: string; O?: string }; // Map symbol to socketId
+  players: { X?: string; O?: string };
   winner?: string | null;
 }
 
@@ -45,12 +45,12 @@ export class GameGateway implements OnGatewayDisconnect {
           console.log(
             `[Disconnect] Notifying remaining players in room ${roomId}`,
           );
+          game.board = Array<string | null>(9).fill(null);
+          game.currentPlayer = 'X';
+          game.winner = null; // Reset winner khi rời
           this.server.to(roomId).except(client.id).emit('error', {
             message: 'Đối thủ đã rời khỏi phòng.',
           });
-          game.board = Array<string | null>(9).fill(null);
-          game.currentPlayer = 'X';
-          game.winner = null;
           this.server.to(roomId).emit('gameState', {
             board: game.board,
             currentPlayer: game.currentPlayer,
@@ -60,7 +60,7 @@ export class GameGateway implements OnGatewayDisconnect {
           const playerCount = Object.keys(game.players).length;
           this.server.to(roomId).emit('playerCountUpdate', { playerCount });
           console.log(
-            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}`,
+            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
           );
         }
       }
@@ -88,38 +88,10 @@ export class GameGateway implements OnGatewayDisconnect {
       const playerCount = Object.keys(game.players).length;
       client.emit('playerAssigned', { playerSymbol: 'X', playerCount });
       console.log(`[JoinGame] Player X joined new room: ${roomId}`);
-      return;
-    }
-
-    // Kiểm tra nếu client đã ở trong phòng
-    const existingPlayer = Object.keys(game.players).find(
-      (key) => game.players[key] === client.id,
-    );
-
-    if (existingPlayer) {
-      client.emit('error', { message: 'Bạn đã ở trong phòng này rồi.' });
-      console.warn(`[JoinGame] Client ${client.id} already in room ${roomId}`);
-      return;
-    }
-
-    // Gán player cho client mới nếu phòng chưa đầy
-    if (!game.players.X) {
-      game.players.X = client.id;
-      const playerCount = Object.keys(game.players).length;
-      await client.join(roomId);
-      client.emit('playerAssigned', { playerSymbol: 'X', playerCount });
-      this.server.to(roomId).emit('gameReady', { roomId });
-      this.server.to(roomId).emit('gameState', {
-        board: game.board,
-        currentPlayer: game.currentPlayer,
-        players: game.players,
-        winner: game.winner,
-      });
-      console.log(`[JoinGame] Player X joined existing room: ${roomId}`);
-    } else if (!game.players.O) {
+    } else if (!game.players.O && game.players.X !== client.id) {
       game.players.O = client.id;
-      const playerCount = Object.keys(game.players).length;
       await client.join(roomId);
+      const playerCount = Object.keys(game.players).length;
       client.emit('playerAssigned', { playerSymbol: 'O', playerCount });
       this.server.to(roomId).emit('gameReady', { roomId });
       this.server.to(roomId).emit('gameState', {
@@ -130,10 +102,12 @@ export class GameGateway implements OnGatewayDisconnect {
       });
       console.log(`[JoinGame] Player O joined room: ${roomId}`);
     } else {
-      client.emit('error', {
-        message: 'Phòng đã đầy, vui lòng chọn phòng khác.',
-      });
-      console.warn(`[JoinGame] Room ${roomId} is full`);
+      const message =
+        game.players.X === client.id || game.players.O === client.id
+          ? 'Bạn đã ở trong phòng này rồi.'
+          : 'Phòng đã đầy, vui lòng chọn phòng khác.';
+      client.emit('error', { message });
+      console.warn(`[JoinGame] Error joining room ${roomId}: ${message}`);
     }
   }
 
@@ -282,12 +256,12 @@ export class GameGateway implements OnGatewayDisconnect {
         console.log(
           `[LeaveGame] Notifying remaining players in room ${roomId}`,
         );
+        game.board = Array<string | null>(9).fill(null);
+        game.currentPlayer = 'X';
+        game.winner = null; // Reset winner khi rời
         this.server.to(roomId).except(client.id).emit('error', {
           message: 'Đối thủ đã rời khỏi phòng.',
         });
-        game.board = Array<string | null>(9).fill(null);
-        game.currentPlayer = 'X';
-        game.winner = null;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
@@ -297,7 +271,7 @@ export class GameGateway implements OnGatewayDisconnect {
         const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('playerCountUpdate', { playerCount });
         console.log(
-          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}`,
+          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
         );
       }
     } else {
