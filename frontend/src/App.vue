@@ -1,4 +1,3 @@
-// App.vue
 <template>
   <div class="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex flex-col items-center justify-center text-white p-4 md:p-8">
     <div class="backdrop-blur-xl bg-white/10 rounded-3xl p-6 md:p-12 max-w-lg w-full shadow-2xl border border-white/20 animate-fade-in">
@@ -113,7 +112,7 @@ interface ErrorEvent {
 
 interface PlayerAssignedEvent {
   playerSymbol: string;
-  playerCount: number; // Thêm trường này
+  playerCount: number;
 }
 
 export default defineComponent({
@@ -128,7 +127,7 @@ export default defineComponent({
     const isLoading = ref(false);
     const isConnected = ref(false);
     const players = ref<{ X?: string; O?: string }>({});
-    const playerCount = ref(0); // Thêm biến mới
+    const playerCount = ref(0);
 
     let socket: Socket | null = null;
 
@@ -150,7 +149,6 @@ export default defineComponent({
     const isMyTurn = computed(() => currentPlayer.value === playerSymbol.value);
 
     const status = computed(() => {
-      // Logic mới để hiển thị số người chơi
       if (playerCount.value > 0 && playerCount.value < 2) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
@@ -204,7 +202,7 @@ export default defineComponent({
       winner.value = null;
       error.value = null;
       isLoading.value = false;
-      playerCount.value = 0; // Reset số người chơi
+      playerCount.value = 0;
     };
 
     const showError = (message: string) => {
@@ -235,20 +233,18 @@ export default defineComponent({
         leaveGame();
       });
 
-      // New event to handle player assignment
       socket.on('playerAssigned', (payload: PlayerAssignedEvent) => {
         playerSymbol.value = payload.playerSymbol;
-        playerCount.value = payload.playerCount; // Cập nhật số người chơi
+        playerCount.value = payload.playerCount;
         isLoading.value = false;
         console.log(`Bạn được gán là người chơi: ${playerSymbol.value}`);
       });
 
-      // Cập nhật gameState để nhận playerCount (tùy chọn)
       socket.on('gameState', (payload: GameState & { playerCount: number }) => {
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
-        playerCount.value = payload.playerCount; // Cập nhật số người chơi
+        playerCount.value = payload.playerCount;
       });
 
       socket.on('gameOver', (payload: GameOverEvent) => {
@@ -286,7 +282,6 @@ export default defineComponent({
 </script>
 
 <style scoped>
-/* Thêm các animation cho transition */
 .slide-fade-enter-active,
 .slide-fade-leave-active {
   transition: all 0.5s ease;

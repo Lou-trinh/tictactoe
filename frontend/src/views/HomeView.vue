@@ -1,4 +1,3 @@
-// HomeView.vue
 <template>
   <div class="home-view">
     <h1 class="text-3xl font-bold mb-4">Chào mừng đến với Tic-Tac-Toe</h1>
@@ -32,11 +31,10 @@ export default defineComponent({
     const router = useRouter();
     const roomId = ref('');
     const statusMessage = ref('');
-    const playerCount = ref(0); // Thêm biến mới để lưu số người chơi
+    const playerCount = ref(0);
     let socket: Socket | null = null;
 
     const computedStatusMessage = computed(() => {
-      // Hiển thị số người chơi nếu có
       if (playerCount.value > 0 && playerCount.value < 2) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
@@ -54,18 +52,16 @@ export default defineComponent({
       socket.on('disconnect', () => {
         console.log('CLIENT: Mất kết nối với server!');
         statusMessage.value = 'Mất kết nối với server!';
-        playerCount.value = 0; // Reset số người chơi
+        playerCount.value = 0;
       });
 
-      // Lắng nghe sự kiện 'gameReady' từ server
       socket.on('gameReady', (data: { roomId: string }) => {
         console.log('CLIENT: Phòng đã đầy, chuyển sang giao diện chơi game...', data);
         statusMessage.value = 'Đã tìm thấy đối thủ! Đang vào phòng...';
-        playerCount.value = 2; // Cập nhật số người chơi thành 2
+        playerCount.value = 2;
         router.push({ name: 'game', params: { roomId: data.roomId } });
       });
 
-      // Lắng nghe sự kiện 'playerAssigned' để cập nhật số người chơi
       socket.on('playerAssigned', (payload: { playerSymbol: string; playerCount: number }) => {
         console.log(`CLIENT: Bạn được gán là người chơi: ${payload.playerSymbol}, số người: ${payload.playerCount}`);
         playerCount.value = payload.playerCount;
@@ -98,7 +94,7 @@ export default defineComponent({
 
     return {
       roomId,
-      computedStatusMessage, // Sử dụng biến đã tính toán
+      computedStatusMessage,
       joinRoom,
     };
   },

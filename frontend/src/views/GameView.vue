@@ -1,4 +1,3 @@
-// GameView.vue
 <template>
   <div class="game-view">
     <div class="text-center mb-6">
@@ -63,7 +62,7 @@ interface GameState {
   board: (string | null)[];
   currentPlayer: string;
   players: { X: string; O: string };
-  playerCount: number; // Thêm trường này
+  playerCount: number;
 }
 
 interface GameOverEvent {
@@ -76,7 +75,7 @@ interface ErrorEvent {
 
 interface PlayerAssignedEvent {
   playerSymbol: string;
-  playerCount: number; // Thêm trường này
+  playerCount: number;
 }
 
 export default defineComponent({
@@ -94,12 +93,11 @@ export default defineComponent({
     const error = ref<string | null>(null);
     const isSocketConnected = ref(false);
     const socket = ref<Socket | null>(null);
-    const playerCount = ref(0); // Thêm biến mới
+    const playerCount = ref(0);
 
     const isMyTurn = computed(() => currentPlayer.value === playerSymbol.value);
 
     const status = computed(() => {
-      // Logic mới để hiển thị số người chơi
       if (playerCount.value > 0 && playerCount.value < 2) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
@@ -162,19 +160,17 @@ export default defineComponent({
         s.emit('joinGame', { roomId: roomId });
       });
 
-      // Lắng nghe sự kiện playerAssigned
       s.on('playerAssigned', (payload: PlayerAssignedEvent) => {
         playerSymbol.value = payload.playerSymbol;
-        playerCount.value = payload.playerCount; // Cập nhật số người chơi
+        playerCount.value = payload.playerCount;
         console.log(`CLIENT: Bạn được gán là người chơi: ${playerSymbol.value}, số người chơi: ${playerCount.value}`);
       });
 
-      // Lắng nghe sự kiện gameState
       s.on('gameState', (payload: GameState) => {
         console.log('CLIENT: Đã nhận gameState', payload);
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
-        playerCount.value = payload.playerCount; // Cập nhật số người chơi
+        playerCount.value = payload.playerCount;
       });
 
       s.on('gameOver', (payload: GameOverEvent) => {
