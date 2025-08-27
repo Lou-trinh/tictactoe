@@ -15,7 +15,7 @@ interface GameState {
   board: (string | null)[];
   currentPlayer: string;
   players: { X?: string; O?: string };
-  winner?: string | null; // Không dùng undefined
+  winner?: string | null;
 }
 
 @WebSocketGateway({ cors: { origin: '*' } })
@@ -46,12 +46,11 @@ export class GameGateway implements OnGatewayDisconnect {
             `[Disconnect] Notifying remaining players in room ${roomId}`,
           );
           this.server.to(roomId).except(client.id).emit('error', {
-            message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
+            message: 'Đối thủ đã rời khỏi phòng.',
           });
-          const previousWinner = game.winner ?? null; // Đảm bảo không gửi undefined
           game.board = Array<string | null>(9).fill(null);
           game.currentPlayer = 'X';
-          game.winner = previousWinner;
+          game.winner = null;
           this.server.to(roomId).emit('gameState', {
             board: game.board,
             currentPlayer: game.currentPlayer,
@@ -258,12 +257,11 @@ export class GameGateway implements OnGatewayDisconnect {
           `[LeaveGame] Notifying remaining players in room ${roomId}`,
         );
         this.server.to(roomId).except(client.id).emit('error', {
-          message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
+          message: 'Đối thủ đã rời khỏi phòng.',
         });
-        const previousWinner = game.winner ?? null;
         game.board = Array<string | null>(9).fill(null);
         game.currentPlayer = 'X';
-        game.winner = previousWinner;
+        game.winner = null; // Đảm bảo winner được reset
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,

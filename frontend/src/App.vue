@@ -256,6 +256,11 @@ export default defineComponent({
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });
 
+      socket.on('playerCountUpdate', (payload: { playerCount: number }) => {
+        playerCount.value = payload.playerCount;
+        console.log(`[Client] Updated player count to ${payload.playerCount} in room ${roomId.value}`);
+      });
+
       socket.on('gameOver', (payload: GameOverEvent) => {
         handleGameOver(payload.winner);
       });
@@ -278,13 +283,14 @@ export default defineComponent({
       isLoading,
       isMyTurn,
       connectionStatus,
-      playerSymbol, // Đảm bảo trả về playerSymbol
+      playerSymbol,
       makeMove,
       joinGame,
       resetGame,
       leaveGame,
       players,
       isConnected,
+      playerCount,
     };
   },
 });

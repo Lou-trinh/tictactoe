@@ -179,6 +179,11 @@ export default defineComponent({
         winner.value = payload.winner ?? null;
       });
 
+      s.on('playerCountUpdate', (payload: { playerCount: number }) => {
+        playerCount.value = payload.playerCount;
+        console.log(`[Client] Updated player count to ${payload.playerCount} in room ${roomId}`);
+      });
+
       s.on('gameOver', (payload: GameOverEvent) => {
         console.log(`[Client] Received gameOver in room ${roomId}. Winner: ${payload.winner}`);
         handleGameOver(payload.winner);
@@ -210,7 +215,8 @@ export default defineComponent({
       handleClick,
       leaveGame,
       resetGame,
-      playerSymbol, // Đảm bảo trả về playerSymbol
+      playerSymbol,
+      playerCount,
     };
   },
 });
