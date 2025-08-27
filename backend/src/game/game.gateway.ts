@@ -14,10 +14,11 @@ import { Game } from './game.schema';
 interface GameState {
   board: (string | null)[];
   currentPlayer: string;
-  players: { X?: string; O?: string }; // Map symbol to socketId
+  players: { X?: string; O?: string };
+  winner?: string | null; // Không dùng undefined
 }
 
-@WebSocketGateway({ cors: { origin: '*' } }) // Mở rộng CORS để kiểm tra
+@WebSocketGateway({ cors: { origin: '*' } })
 export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};
@@ -47,17 +48,20 @@ export class GameGateway implements OnGatewayDisconnect {
           this.server.to(roomId).except(client.id).emit('error', {
             message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
           });
+          const previousWinner = game.winner ?? null; // Đảm bảo không gửi undefined
           game.board = Array<string | null>(9).fill(null);
           game.currentPlayer = 'X';
+          game.winner = previousWinner;
           this.server.to(roomId).emit('gameState', {
             board: game.board,
             currentPlayer: game.currentPlayer,
             players: game.players,
+            winner: game.winner,
           });
           const playerCount = Object.keys(game.players).length;
           this.server.to(roomId).emit('playerCountUpdate', { playerCount });
           console.log(
-            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}`,
+            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
           );
         }
       }
@@ -77,6 +81,7 @@ export class GameGateway implements OnGatewayDisconnect {
         board: Array.from({ length: 9 }, () => null),
         currentPlayer: 'X',
         players: {},
+        winner: null,
       };
       this.games[roomId] = game;
       await client.join(roomId);
@@ -94,6 +99,7 @@ export class GameGateway implements OnGatewayDisconnect {
         board: game.board,
         currentPlayer: game.currentPlayer,
         players: game.players,
+        winner: game.winner,
       });
       console.log(`[JoinGame] Player O joined room: ${roomId}`);
     } else {
@@ -137,10 +143,12 @@ export class GameGateway implements OnGatewayDisconnect {
       const isDraw = this.checkDraw(game.board);
 
       if (winner) {
+        game.winner = winner;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
+          winner: game.winner,
         });
         this.server.to(roomId).emit('gameOver', { winner });
         try {
@@ -157,10 +165,12 @@ export class GameGateway implements OnGatewayDisconnect {
       }
 
       if (isDraw) {
+        game.winner = 'Draw';
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
+          winner: game.winner,
         });
         this.server.to(roomId).emit('gameOver', { winner: 'Draw' });
         try {
@@ -181,6 +191,7 @@ export class GameGateway implements OnGatewayDisconnect {
         board: game.board,
         currentPlayer: game.currentPlayer,
         players: game.players,
+        winner: game.winner,
       });
     } else {
       client.emit('error', { message: 'Nước đi không hợp lệ.' });
@@ -204,11 +215,12 @@ export class GameGateway implements OnGatewayDisconnect {
 
     game.board = Array<string | null>(9).fill(null);
     game.currentPlayer = 'X';
-
+    game.winner = null;
     this.server.to(roomId).emit('gameState', {
       board: game.board,
       currentPlayer: game.currentPlayer,
       players: game.players,
+      winner: game.winner,
     });
     this.server.to(roomId).emit('gameOver', { winner: null });
     console.log(`[ResetGame] Game in room ${roomId} has been reset.`);
@@ -248,17 +260,20 @@ export class GameGateway implements OnGatewayDisconnect {
         this.server.to(roomId).except(client.id).emit('error', {
           message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
         });
+        const previousWinner = game.winner ?? null;
         game.board = Array<string | null>(9).fill(null);
         game.currentPlayer = 'X';
+        game.winner = previousWinner;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
+          winner: game.winner,
         });
         const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('playerCountUpdate', { playerCount });
         console.log(
-          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}`,
+          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
         );
       }
     } else {

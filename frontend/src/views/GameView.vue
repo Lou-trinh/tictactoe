@@ -63,10 +63,11 @@ interface GameState {
   currentPlayer: string;
   players: { X: string; O: string };
   playerCount: number;
+  winner?: string | null | undefined;
 }
 
 interface GameOverEvent {
-  winner: string | null;
+  winner: string | null | undefined;
 }
 
 interface ErrorEvent {
@@ -74,7 +75,7 @@ interface ErrorEvent {
 }
 
 interface PlayerAssignedEvent {
-  playerSymbol: string;
+  playerSymbol: string | undefined;
   playerCount: number;
 }
 
@@ -88,8 +89,8 @@ export default defineComponent({
 
     const board = ref<(string | null)[]>(Array(9).fill(null));
     const currentPlayer = ref<string>('X');
-    const playerSymbol = ref<string | null>(null);
-    const winner = ref<string | null>(null);
+    const playerSymbol = ref<string | null | undefined>(null);
+    const winner = ref<string | null | undefined>(null);
     const error = ref<string | null>(null);
     const isSocketConnected = ref(false);
     const socket = ref<Socket | null>(null);
@@ -98,14 +99,14 @@ export default defineComponent({
     const isMyTurn = computed(() => currentPlayer.value === playerSymbol.value);
 
     const status = computed(() => {
-      if (playerCount.value > 0 && playerCount.value < 2) {
-        return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
-      }
       if (winner.value) {
         if (winner.value === 'Draw') {
           return 'Hòa!';
         }
-        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
+        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`; // Ưu tiên hiển thị winner
+      }
+      if (playerCount.value > 0 && playerCount.value < 2) {
+        return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
       if (!isMyTurn.value) {
         return `Đang chờ đối thủ (${currentPlayer.value}) ra quân...`;
@@ -123,8 +124,8 @@ export default defineComponent({
       }
     };
 
-    const handleGameOver = (winningPlayer: string | null) => {
-      winner.value = winningPlayer;
+    const handleGameOver = (winningPlayer: string | null | undefined) => {
+      winner.value = winningPlayer ?? null;
       console.log('Game Over. Winner:', winningPlayer);
     };
 
@@ -165,7 +166,7 @@ export default defineComponent({
       });
 
       s.on('playerAssigned', (payload: PlayerAssignedEvent) => {
-        playerSymbol.value = payload.playerSymbol;
+        playerSymbol.value = payload.playerSymbol ?? null;
         playerCount.value = payload.playerCount;
         console.log(`[Client] Assigned as player ${payload.playerSymbol}, count: ${payload.playerCount}`);
       });
@@ -175,6 +176,7 @@ export default defineComponent({
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         playerCount.value = payload.playerCount;
+        winner.value = payload.winner ?? null;
       });
 
       s.on('gameOver', (payload: GameOverEvent) => {
