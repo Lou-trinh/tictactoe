@@ -1,3 +1,4 @@
+```vue
 <template>
   <div class="game-view">
     <div class="text-center mb-6">
@@ -34,9 +35,10 @@
       </div>
     </div>
 
-    <div v-if="winner && playerSymbol" class="text-center mt-8">
+    <div v-if="playerSymbol" class="text-center mt-8">
       <div class="flex flex-col md:flex-row justify-center gap-4">
         <button
+          v-if="winner"
           @click="resetGame"
           class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform active:scale-95 shadow-lg"
         >
@@ -176,7 +178,7 @@ export default defineComponent({
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         playerCount.value = payload.playerCount;
-        winner.value = payload.winner ?? null; // Đảm bảo reset winner
+        winner.value = payload.winner ?? null;
       });
 
       s.on('playerCountUpdate', (payload: { playerCount: number }) => {

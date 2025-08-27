@@ -72,9 +72,10 @@
         </div>
       </div>
 
-      <div v-if="winner && playerSymbol" class="text-center mt-8">
+      <div v-if="playerSymbol" class="text-center mt-8">
         <div class="flex flex-col md:flex-row justify-center gap-4">
           <button
+            v-if="winner"
             @click="resetGame"
             class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 transform active:scale-95 shadow-lg"
           >
@@ -252,7 +253,7 @@ export default defineComponent({
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
         playerCount.value = payload.playerCount;
-        winner.value = payload.winner ?? null; // Đảm bảo winner được reset
+        winner.value = payload.winner ?? null;
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });
 
