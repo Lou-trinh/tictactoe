@@ -157,7 +157,7 @@ export default defineComponent({
         }
         return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
       }
-      if (playerCount.value > 0 && playerCount.value < 2) {
+      if (playerCount.value > 0 && playerCount.value < 2 && !winner.value) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
       if (!isMyTurn.value && playerSymbol.value) {
@@ -252,7 +252,7 @@ export default defineComponent({
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
         playerCount.value = payload.playerCount;
-        winner.value = payload.winner ?? null;
+        winner.value = payload.winner ?? null; // Đảm bảo winner được reset
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });
 

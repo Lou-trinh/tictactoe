@@ -105,7 +105,7 @@ export default defineComponent({
         }
         return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
       }
-      if (playerCount.value > 0 && playerCount.value < 2) {
+      if (playerCount.value > 0 && playerCount.value < 2 && !winner.value) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
       if (!isMyTurn.value) {
@@ -176,7 +176,7 @@ export default defineComponent({
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         playerCount.value = payload.playerCount;
-        winner.value = payload.winner ?? null;
+        winner.value = payload.winner ?? null; // Đảm bảo reset winner
       });
 
       s.on('playerCountUpdate', (payload: { playerCount: number }) => {

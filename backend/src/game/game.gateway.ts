@@ -1,10 +1,10 @@
 import {
   SubscribeMessage,
+  WebSocketGateway,
   WebSocketServer,
   MessageBody,
   OnGatewayDisconnect,
   ConnectedSocket,
-  WebSocketGateway,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { InjectModel } from '@nestjs/mongoose';
@@ -45,12 +45,12 @@ export class GameGateway implements OnGatewayDisconnect {
           console.log(
             `[Disconnect] Notifying remaining players in room ${roomId}`,
           );
+          game.board = Array<string | null>(9).fill(null);
+          game.currentPlayer = 'X';
+          game.winner = null; // Reset winner khi rời
           this.server.to(roomId).except(client.id).emit('error', {
             message: 'Đối thủ đã rời khỏi phòng.',
           });
-          game.board = Array<string | null>(9).fill(null);
-          game.currentPlayer = 'X';
-          game.winner = null;
           this.server.to(roomId).emit('gameState', {
             board: game.board,
             currentPlayer: game.currentPlayer,
@@ -256,12 +256,12 @@ export class GameGateway implements OnGatewayDisconnect {
         console.log(
           `[LeaveGame] Notifying remaining players in room ${roomId}`,
         );
+        game.board = Array<string | null>(9).fill(null);
+        game.currentPlayer = 'X';
+        game.winner = null; // Reset winner khi rời
         this.server.to(roomId).except(client.id).emit('error', {
           message: 'Đối thủ đã rời khỏi phòng.',
         });
-        game.board = Array<string | null>(9).fill(null);
-        game.currentPlayer = 'X';
-        game.winner = null; // Đảm bảo winner được reset
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
