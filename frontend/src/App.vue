@@ -173,6 +173,7 @@ export default defineComponent({
       }
 
       if (socket && playerSymbol.value) {
+        console.log(`[Client] Emitting makeMove to room ${roomId.value}, index ${index}`);
         socket.emit('makeMove', { roomId: roomId.value, index, player: playerSymbol.value });
       }
     };
@@ -184,6 +185,7 @@ export default defineComponent({
 
     const resetGame = () => {
       if (socket) {
+        console.log(`[Client] Emitting resetGame to room ${roomId.value}`);
         socket.emit('resetGame', { roomId: roomId.value });
       }
       winner.value = null;
@@ -193,6 +195,7 @@ export default defineComponent({
 
     const leaveGame = () => {
       if (socket) {
+        console.log(`[Client] Emitting leaveGame to room ${roomId.value}`);
         socket.emit('leaveGame', { roomId: roomId.value });
       }
       roomId.value = '';
@@ -207,6 +210,7 @@ export default defineComponent({
 
     const showError = (message: string) => {
       error.value = message;
+      console.log(`[Client] Showing error: ${message}`);
       setTimeout(() => {
         error.value = null;
       }, 3000);
@@ -215,6 +219,7 @@ export default defineComponent({
     const joinGame = () => {
       if (socket) {
         isLoading.value = true;
+        console.log(`[Client] Emitting joinGame to room ${roomId.value}`);
         socket.emit('joinGame', { roomId: roomId.value });
       }
     };
@@ -223,12 +228,12 @@ export default defineComponent({
       socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
 
       socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('[Client] Connected to server');
         isConnected.value = true;
       });
 
       socket.on('disconnect', () => {
-        console.log('Disconnected from server');
+        console.log('[Client] Disconnected from server');
         isConnected.value = false;
         leaveGame();
       });
@@ -237,7 +242,7 @@ export default defineComponent({
         playerSymbol.value = payload.playerSymbol;
         playerCount.value = payload.playerCount;
         isLoading.value = false;
-        console.log(`Bạn được gán là người chơi: ${playerSymbol.value}`);
+        console.log(`[Client] Assigned as player ${payload.playerSymbol}, count: ${payload.playerCount}`);
       });
 
       socket.on('gameState', (payload: GameState & { playerCount: number }) => {
@@ -245,6 +250,7 @@ export default defineComponent({
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
         playerCount.value = payload.playerCount;
+        console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}`);
       });
 
       socket.on('gameOver', (payload: GameOverEvent) => {

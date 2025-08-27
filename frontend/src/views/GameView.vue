@@ -118,6 +118,7 @@ export default defineComponent({
         return;
       }
       if (socket.value) {
+        console.log(`[Client] Emitting makeMove to room ${roomId}, index ${index}`);
         socket.value.emit('makeMove', { roomId: roomId, index, player: playerSymbol.value });
       }
     };
@@ -129,6 +130,7 @@ export default defineComponent({
 
     const showError = (message: string) => {
       error.value = message;
+      console.log(`[Client] Showing error: ${message}`);
       setTimeout(() => {
         error.value = null;
       }, 3000);
@@ -136,6 +138,7 @@ export default defineComponent({
 
     const leaveGame = () => {
       if (isSocketConnected.value) {
+        console.log(`[Client] Emitting leaveGame to room ${roomId}`);
         socket.value?.emit('leaveGame', { roomId: roomId });
       }
       router.push({ name: 'home' });
@@ -143,6 +146,7 @@ export default defineComponent({
 
     const resetGame = () => {
       if (socket.value) {
+        console.log(`[Client] Emitting resetGame to room ${roomId}`);
         socket.value.emit('resetGame', { roomId: roomId });
       }
       winner.value = null;
@@ -156,30 +160,30 @@ export default defineComponent({
 
       s.on('connect', () => {
         isSocketConnected.value = true;
-        console.log('CLIENT: Đã kết nối với server! ID:', s.id);
+        console.log(`[Client] Connected to server! ID: ${s.id}`);
         s.emit('joinGame', { roomId: roomId });
       });
 
       s.on('playerAssigned', (payload: PlayerAssignedEvent) => {
         playerSymbol.value = payload.playerSymbol;
         playerCount.value = payload.playerCount;
-        console.log(`CLIENT: Bạn được gán là người chơi: ${playerSymbol.value}, số người chơi: ${playerCount.value}`);
+        console.log(`[Client] Assigned as player ${payload.playerSymbol}, count: ${payload.playerCount}`);
       });
 
       s.on('gameState', (payload: GameState) => {
-        console.log('CLIENT: Đã nhận gameState', payload);
+        console.log(`[Client] Received gameState in room ${roomId}`, payload);
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         playerCount.value = payload.playerCount;
       });
 
       s.on('gameOver', (payload: GameOverEvent) => {
-        console.log('CLIENT: Đã nhận gameOver. Người thắng:', payload.winner);
+        console.log(`[Client] Received gameOver in room ${roomId}. Winner: ${payload.winner}`);
         handleGameOver(payload.winner);
       });
 
       s.on('error', (payload: ErrorEvent) => {
-        console.error('CLIENT: Lỗi từ server:', payload.message);
+        console.error(`[Client] Error from server in room ${roomId}: ${payload.message}`);
         showError(payload.message);
       });
     };

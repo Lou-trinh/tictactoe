@@ -17,7 +17,7 @@ interface GameState {
   players: { X?: string; O?: string }; // Map symbol to socketId
 }
 
-@WebSocketGateway({ cors: { origin: true } })
+@WebSocketGateway({ cors: { origin: '*' } }) // Mở rộng CORS để kiểm tra
 export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};
@@ -32,13 +32,18 @@ export class GameGateway implements OnGatewayDisconnect {
       );
 
       if (playerSymbol) {
+        console.log(
+          `[Disconnect] Player ${playerSymbol} disconnected from room ${roomId}`,
+        );
         delete game.players[playerSymbol];
-        console.log(`Player ${playerSymbol} disconnected from room ${roomId}`);
 
         if (Object.keys(game.players).length === 0) {
+          console.log(`[Disconnect] Room ${roomId} deleted due to no players`);
           delete this.games[roomId];
-          console.log(`Room ${roomId} deleted due to no players`);
         } else {
+          console.log(
+            `[Disconnect] Notifying remaining players in room ${roomId}`,
+          );
           this.server.to(roomId).except(client.id).emit('error', {
             message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
           });
@@ -51,6 +56,9 @@ export class GameGateway implements OnGatewayDisconnect {
           });
           const playerCount = Object.keys(game.players).length;
           this.server.to(roomId).emit('playerCountUpdate', { playerCount });
+          console.log(
+            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}`,
+          );
         }
       }
     }
@@ -75,7 +83,7 @@ export class GameGateway implements OnGatewayDisconnect {
       game.players.X = client.id;
       const playerCount = Object.keys(game.players).length;
       client.emit('playerAssigned', { playerSymbol: 'X', playerCount });
-      console.log(`Player X joined new room: ${roomId}`);
+      console.log(`[JoinGame] Player X joined new room: ${roomId}`);
     } else if (!game.players.O && game.players.X !== client.id) {
       game.players.O = client.id;
       await client.join(roomId);
@@ -87,14 +95,14 @@ export class GameGateway implements OnGatewayDisconnect {
         currentPlayer: game.currentPlayer,
         players: game.players,
       });
-      console.log(`Player O joined room: ${roomId}`);
+      console.log(`[JoinGame] Player O joined room: ${roomId}`);
     } else {
       const message =
         game.players.X === client.id || game.players.O === client.id
           ? 'Bạn đã ở trong phòng này rồi.'
           : 'Phòng đã đầy, vui lòng chọn phòng khác.';
       client.emit('error', { message });
-      console.warn(`Error joining room: ${message}`);
+      console.warn(`[JoinGame] Error joining room ${roomId}: ${message}`);
     }
   }
 
@@ -203,7 +211,7 @@ export class GameGateway implements OnGatewayDisconnect {
       players: game.players,
     });
     this.server.to(roomId).emit('gameOver', { winner: null });
-    console.log(`Game in room ${roomId} has been reset.`);
+    console.log(`[ResetGame] Game in room ${roomId} has been reset.`);
   }
 
   @SubscribeMessage('leaveGame')
@@ -218,6 +226,7 @@ export class GameGateway implements OnGatewayDisconnect {
       client.emit('error', {
         message: 'Phòng không còn tồn tại.',
       });
+      console.log(`[LeaveGame] Room ${roomId} does not exist`);
       return;
     }
 
@@ -226,13 +235,16 @@ export class GameGateway implements OnGatewayDisconnect {
     );
 
     if (playerSymbol) {
+      console.log(`[LeaveGame] Player ${playerSymbol} leaving room ${roomId}`);
       delete game.players[playerSymbol];
-      console.log(`Player ${playerSymbol} left room ${roomId}`);
 
       if (Object.keys(game.players).length === 0) {
+        console.log(`[LeaveGame] Room ${roomId} deleted due to no players`);
         delete this.games[roomId];
-        console.log(`Room ${roomId} deleted due to no players`);
       } else {
+        console.log(
+          `[LeaveGame] Notifying remaining players in room ${roomId}`,
+        );
         this.server.to(roomId).except(client.id).emit('error', {
           message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
         });
@@ -245,7 +257,14 @@ export class GameGateway implements OnGatewayDisconnect {
         });
         const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('playerCountUpdate', { playerCount });
+        console.log(
+          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}`,
+        );
       }
+    } else {
+      console.log(
+        `[LeaveGame] Player ${client.id} not found in room ${roomId}`,
+      );
     }
   }
 
