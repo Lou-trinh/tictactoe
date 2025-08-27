@@ -1,3 +1,4 @@
+// HomeView.vue
 <template>
   <div class="home-view">
     <h1 class="text-3xl font-bold mb-4">Chào mừng đến với Tic-Tac-Toe</h1>
@@ -14,14 +15,14 @@
       <button @click="joinRoom" class="btn-join">Tham gia phòng</button>
     </div>
 
-    <div v-if="statusMessage" class="status-message mt-6">
-      {{ statusMessage }}
+    <div v-if="computedStatusMessage" class="status-message mt-6">
+      {{ computedStatusMessage }}
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onUnmounted } from 'vue';
+import { defineComponent, ref, onMounted, onUnmounted, computed } from 'vue';
 import { io, Socket } from 'socket.io-client';
 import { useRouter } from 'vue-router';
 
@@ -31,10 +32,18 @@ export default defineComponent({
     const router = useRouter();
     const roomId = ref('');
     const statusMessage = ref('');
+    const playerCount = ref(0); // Thêm biến mới để lưu số người chơi
     let socket: Socket | null = null;
 
+    const computedStatusMessage = computed(() => {
+      // Hiển thị số người chơi nếu có
+      if (playerCount.value > 0 && playerCount.value < 2) {
+        return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
+      }
+      return statusMessage.value;
+    });
+
     onMounted(() => {
-      // Khởi tạo kết nối WebSocket với server
       socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
 
       socket.on('connect', () => {
@@ -45,21 +54,27 @@ export default defineComponent({
       socket.on('disconnect', () => {
         console.log('CLIENT: Mất kết nối với server!');
         statusMessage.value = 'Mất kết nối với server!';
+        playerCount.value = 0; // Reset số người chơi
       });
 
       // Lắng nghe sự kiện 'gameReady' từ server
       socket.on('gameReady', (data: { roomId: string }) => {
         console.log('CLIENT: Phòng đã đầy, chuyển sang giao diện chơi game...', data);
         statusMessage.value = 'Đã tìm thấy đối thủ! Đang vào phòng...';
-
-        // Chuyển hướng đến trang chơi game chỉ khi nhận được sự kiện này
+        playerCount.value = 2; // Cập nhật số người chơi thành 2
         router.push({ name: 'game', params: { roomId: data.roomId } });
       });
 
-      // Xử lý các thông báo lỗi từ server
+      // Lắng nghe sự kiện 'playerAssigned' để cập nhật số người chơi
+      socket.on('playerAssigned', (payload: { playerSymbol: string; playerCount: number }) => {
+        console.log(`CLIENT: Bạn được gán là người chơi: ${payload.playerSymbol}, số người: ${payload.playerCount}`);
+        playerCount.value = payload.playerCount;
+      });
+
       socket.on('error', (data: { message: string }) => {
         console.error('CLIENT: Lỗi từ server:', data.message);
         statusMessage.value = `Lỗi: ${data.message}`;
+        playerCount.value = 0;
       });
     });
 
@@ -76,7 +91,6 @@ export default defineComponent({
       }
       statusMessage.value = 'Đang tìm đối thủ...';
 
-      // Phát sự kiện 'joinGame' đến server với ID phòng
       if (socket) {
         socket.emit('joinGame', { roomId: roomId.value });
       }
@@ -84,7 +98,7 @@ export default defineComponent({
 
     return {
       roomId,
-      statusMessage,
+      computedStatusMessage, // Sử dụng biến đã tính toán
       joinRoom,
     };
   },

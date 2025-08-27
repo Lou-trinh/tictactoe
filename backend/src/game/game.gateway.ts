@@ -1,3 +1,4 @@
+// game.gateway.ts
 import {
   SubscribeMessage,
   WebSocketServer,
@@ -43,6 +44,10 @@ export class GameGateway implements OnGatewayDisconnect {
           void this.server.to(roomId).emit('error', {
             message: 'Đối thủ đã rời khỏi phòng, game kết thúc.',
           });
+          const playerCount = Object.keys(game.players).length;
+          void this.server
+            .to(roomId)
+            .emit('playerCountUpdate', { playerCount });
         }
       }
     }
@@ -57,7 +62,6 @@ export class GameGateway implements OnGatewayDisconnect {
     let game = this.games[roomId];
 
     if (!game) {
-      // Create a new game if the room does not exist
       game = {
         board: Array.from({ length: 9 }, () => null),
         currentPlayer: 'X',
@@ -66,13 +70,14 @@ export class GameGateway implements OnGatewayDisconnect {
       this.games[roomId] = game;
       await client.join(roomId);
       game.players.X = client.id;
-      void client.emit('playerAssigned', { playerSymbol: 'X' });
+      const playerCount = Object.keys(game.players).length;
+      void client.emit('playerAssigned', { playerSymbol: 'X', playerCount }); // Thêm playerCount
       console.log(`Player X joined new room: ${roomId}`);
     } else if (!game.players.O && game.players.X !== client.id) {
-      // Add the second player to the existing room
       game.players.O = client.id;
       await client.join(roomId);
-      void client.emit('playerAssigned', { playerSymbol: 'O' });
+      const playerCount = Object.keys(game.players).length;
+      void client.emit('playerAssigned', { playerSymbol: 'O', playerCount }); // Thêm playerCount
       void this.server.to(roomId).emit('gameReady', { roomId });
       void this.server.to(roomId).emit('gameState', {
         board: game.board,
@@ -81,7 +86,6 @@ export class GameGateway implements OnGatewayDisconnect {
       });
       console.log(`Player O joined room: ${roomId}`);
     } else {
-      // Handle cases where the room is full or the player is already in the room
       const message =
         game.players.X === client.id || game.players.O === client.id
           ? 'Bạn đã ở trong phòng này rồi.'
@@ -99,7 +103,6 @@ export class GameGateway implements OnGatewayDisconnect {
     const { roomId, index } = data;
     const game = this.games[roomId];
 
-    // Kiểm tra nếu game không tồn tại
     if (!game) {
       void client.emit('error', {
         message: 'Game không còn tồn tại. Vui lòng tạo phòng mới.',
@@ -117,17 +120,12 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
-    // Kiểm tra nước đi hợp lệ
     if (game.board[index] === null && game.currentPlayer === player) {
-      // 1. Cập nhật trạng thái bàn cờ
       game.board[index] = player;
-
-      // 2. Kiểm tra người thắng
       const winner = this.checkWinner(game.board);
       const isDraw = this.checkDraw(game.board);
 
       if (winner) {
-        // Gửi trạng thái bàn cờ cuối cùng và thông báo người thắng
         void this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
@@ -144,12 +142,10 @@ export class GameGateway implements OnGatewayDisconnect {
         } catch (error) {
           console.error('Failed to save game to database:', error);
         }
-        // delete this.games[roomId]; // Đã được comment để cho phép chơi lại
         return;
       }
 
       if (isDraw) {
-        // Gửi trạng thái bàn cờ cuối cùng và thông báo hòa
         void this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
@@ -166,11 +162,9 @@ export class GameGateway implements OnGatewayDisconnect {
         } catch (error) {
           console.error('Failed to save game to database:', error);
         }
-        // delete this.games[roomId]; // Đã được comment để cho phép chơi lại
         return;
       }
 
-      // Nếu chưa có người thắng, chuyển lượt chơi và gửi trạng thái mới
       game.currentPlayer = player === 'X' ? 'O' : 'X';
       void this.server.to(roomId).emit('gameState', {
         board: game.board,
@@ -197,11 +191,9 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
-    // Reset trạng thái của game
     game.board = Array<string | null>(9).fill(null);
     game.currentPlayer = 'X';
 
-    // Gửi thông báo cho cả hai người chơi trong phòng
     void this.server.to(roomId).emit('gameState', {
       board: game.board,
       currentPlayer: game.currentPlayer,

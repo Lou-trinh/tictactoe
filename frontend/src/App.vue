@@ -1,3 +1,4 @@
+// App.vue
 <template>
   <div class="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex flex-col items-center justify-center text-white p-4 md:p-8">
     <div class="backdrop-blur-xl bg-white/10 rounded-3xl p-6 md:p-12 max-w-lg w-full shadow-2xl border border-white/20 animate-fade-in">
@@ -29,11 +30,11 @@
             :disabled="!isConnected || isLoading || !roomId"
             class="w-full md:w-auto px-6 py-3 rounded-xl font-bold transition-all duration-300 transform active:scale-95 shadow-lg"
             :class="{
-              'bg-cyan-500 hover:bg-cyan-600 text-white': isConnected && !isLoading && roomId,
-              'bg-gray-400 text-gray-700 cursor-not-allowed': !isConnected || isLoading || !roomId,
-            }"
+    'bg-cyan-500 hover:bg-cyan-600 text-white': isConnected && !isLoading && roomId,
+    'bg-gray-400 text-gray-700 cursor-not-allowed': !isConnected || isLoading || !roomId,
+  }"
           >
-            {{ isLoading ? 'Đang tham gia...' : 'Tham gia' }}
+            {{ isLoading ? 'Đang tạo phòng...' : 'Tạo phòng' }}
           </button>
         </div>
       </div>
@@ -88,7 +89,6 @@
           </button>
         </div>
       </div>
-
     </div>
   </div>
 </template>
@@ -111,6 +111,11 @@ interface ErrorEvent {
   message: string;
 }
 
+interface PlayerAssignedEvent {
+  playerSymbol: string;
+  playerCount: number; // Thêm trường này
+}
+
 export default defineComponent({
   name: 'App',
   setup() {
@@ -123,6 +128,7 @@ export default defineComponent({
     const isLoading = ref(false);
     const isConnected = ref(false);
     const players = ref<{ X?: string; O?: string }>({});
+    const playerCount = ref(0); // Thêm biến mới
 
     let socket: Socket | null = null;
 
@@ -144,8 +150,9 @@ export default defineComponent({
     const isMyTurn = computed(() => currentPlayer.value === playerSymbol.value);
 
     const status = computed(() => {
-      if (!playerSymbol.value) {
-        return 'Chờ đối thủ...';
+      // Logic mới để hiển thị số người chơi
+      if (playerCount.value > 0 && playerCount.value < 2) {
+        return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
       }
       if (winner.value) {
         if (winner.value === 'Draw') {
@@ -153,10 +160,13 @@ export default defineComponent({
         }
         return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
       }
-      if (!isMyTurn.value) {
+      if (!isMyTurn.value && playerSymbol.value) {
         return `Đang chờ đối thủ (${currentPlayer.value}) ra quân...`;
       }
-      return `Lượt của bạn (${currentPlayer.value}) ra quân!`;
+      if (isMyTurn.value) {
+        return `Lượt của bạn (${currentPlayer.value}) ra quân!`;
+      }
+      return 'Chờ đối thủ...';
     });
 
     const makeMove = (index: number) => {
@@ -176,10 +186,8 @@ export default defineComponent({
 
     const resetGame = () => {
       if (socket) {
-        // Gửi sự kiện mới để yêu cầu server khởi tạo lại game
         socket.emit('resetGame', { roomId: roomId.value });
       }
-      // Cập nhật trạng thái client để chuẩn bị cho ván mới
       winner.value = null;
       board.value = Array(9).fill(null);
       currentPlayer.value = 'X';
@@ -189,7 +197,6 @@ export default defineComponent({
       if (socket) {
         socket.emit('leaveGame', { roomId: roomId.value });
       }
-      // Reset trạng thái client về màn hình nhập ID
       roomId.value = '';
       board.value = Array(9).fill(null);
       currentPlayer.value = 'X';
@@ -197,6 +204,7 @@ export default defineComponent({
       winner.value = null;
       error.value = null;
       isLoading.value = false;
+      playerCount.value = 0; // Reset số người chơi
     };
 
     const showError = (message: string) => {
@@ -214,7 +222,7 @@ export default defineComponent({
     };
 
     const initSocket = () => {
-      socket = io('https://tictactoe-backend-production-faa9.up.railway.app'); // Thay đổi URL nếu server chạy ở địa chỉ khác
+      socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
 
       socket.on('connect', () => {
         console.log('Connected to server');
@@ -228,16 +236,19 @@ export default defineComponent({
       });
 
       // New event to handle player assignment
-      socket.on('playerAssigned', (payload: { playerSymbol: string }) => {
+      socket.on('playerAssigned', (payload: PlayerAssignedEvent) => {
         playerSymbol.value = payload.playerSymbol;
+        playerCount.value = payload.playerCount; // Cập nhật số người chơi
         isLoading.value = false;
         console.log(`Bạn được gán là người chơi: ${playerSymbol.value}`);
       });
 
-      socket.on('gameState', (payload: GameState) => {
+      // Cập nhật gameState để nhận playerCount (tùy chọn)
+      socket.on('gameState', (payload: GameState & { playerCount: number }) => {
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
+        playerCount.value = payload.playerCount; // Cập nhật số người chơi
       });
 
       socket.on('gameOver', (payload: GameOverEvent) => {

@@ -1,3 +1,4 @@
+// GameView.vue
 <template>
   <div class="game-view">
     <div class="text-center mb-6">
@@ -62,6 +63,7 @@ interface GameState {
   board: (string | null)[];
   currentPlayer: string;
   players: { X: string; O: string };
+  playerCount: number; // Thêm trường này
 }
 
 interface GameOverEvent {
@@ -70,6 +72,11 @@ interface GameOverEvent {
 
 interface ErrorEvent {
   message: string;
+}
+
+interface PlayerAssignedEvent {
+  playerSymbol: string;
+  playerCount: number; // Thêm trường này
 }
 
 export default defineComponent({
@@ -87,10 +94,15 @@ export default defineComponent({
     const error = ref<string | null>(null);
     const isSocketConnected = ref(false);
     const socket = ref<Socket | null>(null);
+    const playerCount = ref(0); // Thêm biến mới
 
     const isMyTurn = computed(() => currentPlayer.value === playerSymbol.value);
 
     const status = computed(() => {
+      // Logic mới để hiển thị số người chơi
+      if (playerCount.value > 0 && playerCount.value < 2) {
+        return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
+      }
       if (winner.value) {
         if (winner.value === 'Draw') {
           return 'Hòa!';
@@ -133,10 +145,8 @@ export default defineComponent({
 
     const resetGame = () => {
       if (socket.value) {
-        // Gửi sự kiện mới để yêu cầu server khởi tạo lại game
         socket.value.emit('resetGame', { roomId: roomId });
       }
-      // Cập nhật trạng thái frontend để chuẩn bị cho ván mới
       winner.value = null;
       board.value = Array(9).fill(null);
       currentPlayer.value = 'X';
@@ -152,15 +162,19 @@ export default defineComponent({
         s.emit('joinGame', { roomId: roomId });
       });
 
-      s.on('playerAssigned', (payload: { playerSymbol: string }) => {
+      // Lắng nghe sự kiện playerAssigned
+      s.on('playerAssigned', (payload: PlayerAssignedEvent) => {
         playerSymbol.value = payload.playerSymbol;
-        console.log(`CLIENT: Bạn được gán là người chơi: ${playerSymbol.value}`);
+        playerCount.value = payload.playerCount; // Cập nhật số người chơi
+        console.log(`CLIENT: Bạn được gán là người chơi: ${playerSymbol.value}, số người chơi: ${playerCount.value}`);
       });
 
+      // Lắng nghe sự kiện gameState
       s.on('gameState', (payload: GameState) => {
         console.log('CLIENT: Đã nhận gameState', payload);
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
+        playerCount.value = payload.playerCount; // Cập nhật số người chơi
       });
 
       s.on('gameOver', (payload: GameOverEvent) => {
