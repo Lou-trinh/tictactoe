@@ -1,4 +1,3 @@
-```vue
 <template>
   <div class="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-cyan-500 flex flex-col items-center justify-center text-white p-4 md:p-8">
     <div class="backdrop-blur-xl bg-white/10 rounded-3xl p-6 md:p-12 max-w-lg w-full shadow-2xl border border-white/20 animate-fade-in">
@@ -202,7 +201,6 @@ export default defineComponent({
         console.log(`[Client] Emitting leaveGame to room ${roomId.value}`);
         socket.emit('leaveGame', { roomId: roomId.value });
       }
-      roomId.value = '';
       board.value = Array(9).fill(null);
       currentPlayer.value = 'X';
       playerSymbol.value = null;
