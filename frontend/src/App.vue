@@ -252,7 +252,10 @@ export default defineComponent({
         board.value = payload.board;
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
-        playerCount.value = payload.playerCount;
+
+        // Cố gắng lấy playerCount từ payload, nếu không có thì giữ nguyên giá trị cũ
+        playerCount.value = payload.playerCount ?? playerCount.value;
+
         winner.value = payload.winner ?? null;
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });
