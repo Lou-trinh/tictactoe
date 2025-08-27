@@ -34,7 +34,7 @@
       </div>
     </div>
 
-    <div v-if="winner" class="text-center mt-8">
+    <div v-if="winner && playerSymbol" class="text-center mt-8">
       <div class="flex flex-col md:flex-row justify-center gap-4">
         <button
           @click="resetGame"
@@ -103,7 +103,7 @@ export default defineComponent({
         if (winner.value === 'Draw') {
           return 'Hòa!';
         }
-        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`; // Ưu tiên hiển thị winner
+        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
       }
       if (playerCount.value > 0 && playerCount.value < 2) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
@@ -210,6 +210,7 @@ export default defineComponent({
       handleClick,
       leaveGame,
       resetGame,
+      playerSymbol, // Đảm bảo trả về playerSymbol
     };
   },
 });

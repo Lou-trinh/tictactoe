@@ -72,7 +72,7 @@
         </div>
       </div>
 
-      <div v-if="winner" class="text-center mt-8">
+      <div v-if="winner && playerSymbol" class="text-center mt-8">
         <div class="flex flex-col md:flex-row justify-center gap-4">
           <button
             @click="resetGame"
@@ -100,7 +100,8 @@ interface GameState {
   board: (string | null)[];
   currentPlayer: string;
   players: { X: string; O: string };
-  winner?: string | null | undefined; // Thêm undefined vào kiểu
+  winner?: string | null | undefined;
+  playerCount: number;
 }
 
 interface GameOverEvent {
@@ -112,7 +113,7 @@ interface ErrorEvent {
 }
 
 interface PlayerAssignedEvent {
-  playerSymbol: string | undefined; // Thêm undefined nếu cần
+  playerSymbol: string | undefined;
   playerCount: number;
 }
 
@@ -122,8 +123,8 @@ export default defineComponent({
     const roomId = ref('');
     const board = ref<(string | null)[]>(Array(9).fill(null));
     const currentPlayer = ref<string>('X');
-    const playerSymbol = ref<string | null | undefined>(null); // Cho phép undefined
-    const winner = ref<string | null | undefined>(null); // Cho phép undefined
+    const playerSymbol = ref<string | null | undefined>(null);
+    const winner = ref<string | null | undefined>(null);
     const error = ref<string | null>(null);
     const isLoading = ref(false);
     const isConnected = ref(false);
@@ -154,7 +155,7 @@ export default defineComponent({
         if (winner.value === 'Draw') {
           return 'Hòa!';
         }
-        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`; // Ưu tiên hiển thị winner
+        return `Người chơi ${winner.value === 'X' ? 'X' : 'O'} đã thắng!`;
       }
       if (playerCount.value > 0 && playerCount.value < 2) {
         return `Số người chơi: ${playerCount.value}/2 - Chờ đối thủ...`;
@@ -180,7 +181,7 @@ export default defineComponent({
     };
 
     const handleGameOver = (winningPlayer: string | null | undefined) => {
-      winner.value = winningPlayer ?? null; // Gán null nếu undefined
+      winner.value = winningPlayer ?? null;
       console.log('Game Over. Winner:', winningPlayer);
     };
 
@@ -240,7 +241,7 @@ export default defineComponent({
       });
 
       socket.on('playerAssigned', (payload: PlayerAssignedEvent) => {
-        playerSymbol.value = payload.playerSymbol ?? null; // Xử lý undefined
+        playerSymbol.value = payload.playerSymbol ?? null;
         playerCount.value = payload.playerCount;
         isLoading.value = false;
         console.log(`[Client] Assigned as player ${payload.playerSymbol}, count: ${payload.playerCount}`);
@@ -251,7 +252,7 @@ export default defineComponent({
         currentPlayer.value = payload.currentPlayer;
         players.value = payload.players;
         playerCount.value = payload.playerCount;
-        winner.value = payload.winner ?? null; // Xử lý undefined
+        winner.value = payload.winner ?? null;
         console.log(`[Client] Updated gameState in room ${roomId.value}, player count: ${playerCount.value}, winner: ${payload.winner}`);
       });
 
@@ -277,7 +278,7 @@ export default defineComponent({
       isLoading,
       isMyTurn,
       connectionStatus,
-      playerSymbol,
+      playerSymbol, // Đảm bảo trả về playerSymbol
       makeMove,
       joinGame,
       resetGame,
