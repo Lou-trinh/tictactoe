@@ -47,9 +47,14 @@ export class GameGateway implements OnGatewayDisconnect {
           console.log(
             `[Disconnect] Notifying remaining players in room ${roomId}`,
           );
+          // Reset board when a player leaves
+          game.board = Array<string | null>(9).fill(null);
+          game.currentPlayer = 'X';
+          game.winner = null;
+
           this.server.to(roomId).except(client.id).emit('error', {
             message:
-              'Đối thủ đã rời khỏi phòng. Đang chờ người chơi mới hoặc đối thủ quay lại.',
+              'Đối thủ đã rời khỏi phòng. Bàn cờ đã được reset. Đang chờ người chơi mới hoặc đối thủ quay lại.',
           });
           const playerCount = remainingPlayers;
           this.server.to(roomId).emit('gameState', {
@@ -340,9 +345,14 @@ export class GameGateway implements OnGatewayDisconnect {
           `[LeaveGame] Notifying remaining players in room ${roomId}, players:`,
           game.players,
         );
+        // Reset board when a player leaves
+        game.board = Array<string | null>(9).fill(null);
+        game.currentPlayer = 'X';
+        game.winner = null;
+
         this.server.to(roomId).except(client.id).emit('error', {
           message:
-            'Đối thủ đã rời khỏi phòng. Đang chờ người chơi mới hoặc đối thủ quay lại.',
+            'Đối thủ đã rời khỏi phòng. Bàn cờ đã được reset. Đang chờ người chơi mới hoặc đối thủ quay lại.',
         });
         const playerCount = remainingPlayers;
         this.server.to(roomId).emit('gameState', {
