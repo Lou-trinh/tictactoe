@@ -34,33 +34,34 @@ export class GameGateway implements OnGatewayDisconnect {
 
       if (playerSymbol) {
         console.log(
-          `[Disconnect] Player ${playerSymbol} disconnected from room ${roomId}`,
+          `[Disconnect] Player ${playerSymbol} disconnected from room ${roomId}, client: ${client.id}`,
         );
         delete game.players[playerSymbol];
 
-        if (Object.keys(game.players).length === 0) {
-          console.log(`[Disconnect] Room ${roomId} deleted due to no players`);
+        const remainingPlayers = Object.keys(game.players).length;
+
+        if (remainingPlayers === 0) {
+          console.log(`[Disconnect] No players left, deleting room ${roomId}`);
           delete this.games[roomId];
         } else {
           console.log(
             `[Disconnect] Notifying remaining players in room ${roomId}`,
           );
-          game.board = Array<string | null>(9).fill(null);
-          game.currentPlayer = 'X';
-          game.winner = null; // Reset winner khi rời
           this.server.to(roomId).except(client.id).emit('error', {
-            message: 'Đối thủ đã rời khỏi phòng.',
+            message:
+              'Đối thủ đã rời khỏi phòng. Đang chờ người chơi mới hoặc đối thủ quay lại.',
           });
+          const playerCount = remainingPlayers;
           this.server.to(roomId).emit('gameState', {
             board: game.board,
             currentPlayer: game.currentPlayer,
             players: game.players,
             winner: game.winner,
+            playerCount,
           });
-          const playerCount = Object.keys(game.players).length;
           this.server.to(roomId).emit('playerCountUpdate', { playerCount });
           console.log(
-            `[Disconnect] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
+            `[Disconnect] Game state updated in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
           );
         }
       }
@@ -74,8 +75,16 @@ export class GameGateway implements OnGatewayDisconnect {
   ) {
     const { roomId } = data;
     let game = this.games[roomId];
+    console.log(
+      `[JoinGame] Attempting to join room ${roomId}, client: ${client.id}, existing players:`,
+      game ? game.players : 'none',
+    );
 
+    // Case 1: Room doesn't exist, create a new one.
     if (!game) {
+      console.log(
+        `[JoinGame] Room ${roomId} does not exist, creating new room`,
+      );
       game = {
         board: Array.from({ length: 9 }, () => null),
         currentPlayer: 'X',
@@ -85,29 +94,91 @@ export class GameGateway implements OnGatewayDisconnect {
       this.games[roomId] = game;
       await client.join(roomId);
       game.players.X = client.id;
+      client.emit('playerAssigned', { playerSymbol: 'X', playerCount: 1 });
+      console.log(
+        `[JoinGame] Player X joined new room: ${roomId}, playerCount: 1, players:`,
+        game.players,
+      );
+      return;
+    }
+
+    // Case 2: Player is already in the room.
+    const existingPlayerSymbol = Object.keys(game.players).find(
+      (key) => game.players[key] === client.id,
+    );
+    if (existingPlayerSymbol) {
+      console.log(
+        `[JoinGame] Player ${existingPlayerSymbol} is already in room ${roomId}. Sending existing info.`,
+      );
       const playerCount = Object.keys(game.players).length;
-      client.emit('playerAssigned', { playerSymbol: 'X', playerCount });
-      console.log(`[JoinGame] Player X joined new room: ${roomId}`);
-    } else if (!game.players.O && game.players.X !== client.id) {
-      game.players.O = client.id;
-      await client.join(roomId);
-      const playerCount = Object.keys(game.players).length;
-      client.emit('playerAssigned', { playerSymbol: 'O', playerCount });
-      this.server.to(roomId).emit('gameReady', { roomId });
+      client.emit('playerAssigned', {
+        playerSymbol: existingPlayerSymbol,
+        playerCount,
+      });
       this.server.to(roomId).emit('gameState', {
         board: game.board,
         currentPlayer: game.currentPlayer,
         players: game.players,
         winner: game.winner,
+        playerCount,
       });
-      console.log(`[JoinGame] Player O joined room: ${roomId}`);
+      return;
+    }
+
+    // Case 3: A new player is trying to join.
+    const playerCount = Object.keys(game.players).length;
+    console.log(
+      `[JoinGame] Current player count in room ${roomId}: ${playerCount}`,
+    );
+
+    if (playerCount >= 2) {
+      client.emit('error', { message: 'Phòng đã đầy.' });
+      console.warn(
+        `[JoinGame] Room ${roomId} is full with ${playerCount} players, denying ${client.id}`,
+      );
+      return;
+    }
+
+    let assignedSymbol: string | null = null;
+    if (!game.players.X) {
+      game.players.X = client.id;
+      assignedSymbol = 'X';
+    } else if (!game.players.O) {
+      game.players.O = client.id;
+      assignedSymbol = 'O';
+    }
+
+    if (assignedSymbol) {
+      await client.join(roomId);
+      const updatedPlayerCount = Object.keys(game.players).length;
+      client.emit('playerAssigned', {
+        playerSymbol: assignedSymbol,
+        playerCount: updatedPlayerCount,
+      });
+      console.log(
+        `[JoinGame] Player ${assignedSymbol} joined room: ${roomId}, playerCount: ${updatedPlayerCount}, players:`,
+        game.players,
+      );
+
+      this.server.to(roomId).emit('gameState', {
+        board: game.board,
+        currentPlayer: game.currentPlayer,
+        players: game.players,
+        winner: game.winner,
+        playerCount: updatedPlayerCount,
+      });
+
+      if (updatedPlayerCount === 2) {
+        this.server.to(roomId).emit('gameReady', { roomId });
+      }
     } else {
-      const message =
-        game.players.X === client.id || game.players.O === client.id
-          ? 'Bạn đã ở trong phòng này rồi.'
-          : 'Phòng đã đầy, vui lòng chọn phòng khác.';
-      client.emit('error', { message });
-      console.warn(`[JoinGame] Error joining room ${roomId}: ${message}`);
+      client.emit('error', {
+        message: 'Không thể vào phòng. Vui lòng thử lại.',
+      });
+      console.warn(
+        `[JoinGame] Assignment failed for room ${roomId}, players:`,
+        game.players,
+      );
     }
   }
 
@@ -143,11 +214,13 @@ export class GameGateway implements OnGatewayDisconnect {
 
       if (winner) {
         game.winner = winner;
+        const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
           winner: game.winner,
+          playerCount,
         });
         this.server.to(roomId).emit('gameOver', { winner });
         try {
@@ -165,11 +238,13 @@ export class GameGateway implements OnGatewayDisconnect {
 
       if (isDraw) {
         game.winner = 'Draw';
+        const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
           winner: game.winner,
+          playerCount,
         });
         this.server.to(roomId).emit('gameOver', { winner: 'Draw' });
         try {
@@ -186,11 +261,13 @@ export class GameGateway implements OnGatewayDisconnect {
       }
 
       game.currentPlayer = player === 'X' ? 'O' : 'X';
+      const playerCount = Object.keys(game.players).length;
       this.server.to(roomId).emit('gameState', {
         board: game.board,
         currentPlayer: game.currentPlayer,
         players: game.players,
         winner: game.winner,
+        playerCount,
       });
     } else {
       client.emit('error', { message: 'Nước đi không hợp lệ.' });
@@ -215,11 +292,13 @@ export class GameGateway implements OnGatewayDisconnect {
     game.board = Array<string | null>(9).fill(null);
     game.currentPlayer = 'X';
     game.winner = null;
+    const playerCount = Object.keys(game.players).length;
     this.server.to(roomId).emit('gameState', {
       board: game.board,
       currentPlayer: game.currentPlayer,
       players: game.players,
       winner: game.winner,
+      playerCount,
     });
     this.server.to(roomId).emit('gameOver', { winner: null });
     console.log(`[ResetGame] Game in room ${roomId} has been reset.`);
@@ -246,32 +325,36 @@ export class GameGateway implements OnGatewayDisconnect {
     );
 
     if (playerSymbol) {
-      console.log(`[LeaveGame] Player ${playerSymbol} leaving room ${roomId}`);
+      console.log(
+        `[LeaveGame] Player ${playerSymbol} leaving room ${roomId}, client: ${client.id}`,
+      );
       delete game.players[playerSymbol];
 
-      if (Object.keys(game.players).length === 0) {
-        console.log(`[LeaveGame] Room ${roomId} deleted due to no players`);
+      const remainingPlayers = Object.keys(game.players).length;
+
+      if (remainingPlayers === 0) {
+        console.log(`[LeaveGame] No players left, deleting room ${roomId}`);
         delete this.games[roomId];
       } else {
         console.log(
-          `[LeaveGame] Notifying remaining players in room ${roomId}`,
+          `[LeaveGame] Notifying remaining players in room ${roomId}, players:`,
+          game.players,
         );
-        game.board = Array<string | null>(9).fill(null);
-        game.currentPlayer = 'X';
-        game.winner = null; // Reset winner khi rời
         this.server.to(roomId).except(client.id).emit('error', {
-          message: 'Đối thủ đã rời khỏi phòng.',
+          message:
+            'Đối thủ đã rời khỏi phòng. Đang chờ người chơi mới hoặc đối thủ quay lại.',
         });
+        const playerCount = remainingPlayers;
         this.server.to(roomId).emit('gameState', {
           board: game.board,
           currentPlayer: game.currentPlayer,
           players: game.players,
           winner: game.winner,
+          playerCount,
         });
-        const playerCount = Object.keys(game.players).length;
         this.server.to(roomId).emit('playerCountUpdate', { playerCount });
         console.log(
-          `[LeaveGame] Game reset in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
+          `[LeaveGame] Game state updated in room ${roomId}, player count: ${playerCount}, winner: ${game.winner}`,
         );
       }
     } else {
