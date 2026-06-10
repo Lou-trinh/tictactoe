@@ -18,7 +18,16 @@ interface GameState {
   winner?: string | null;
 }
 
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({
+  cors: {
+    origin: [
+      'https://lou-trinh.github.io',
+      'http://localhost:5173',
+      'http://localhost:4173',
+    ],
+    methods: ['GET', 'POST'],
+  },
+})
 export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};

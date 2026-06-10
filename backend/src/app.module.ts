@@ -7,8 +7,8 @@ import { GameModule } from './game/game.module';
 @Module({
   imports: [
     MongooseModule.forRoot(
-      'mongodb://mongo:SPLiyfZWsazGtAuvvaxfvAVVLdlmimrE@gondola.proxy.rlwy.net:53244',
-    ), // Thay bằng URI MongoDB của bạn
+      process.env.MONGODB_URI ?? 'mongodb://172.22.218.33:27017/tictactoe',
+    ),
     GameModule,
   ],
   controllers: [AppController],
