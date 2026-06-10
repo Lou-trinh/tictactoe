@@ -7,9 +7,6 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { Game } from './game.schema';
 
 interface GameState {
   board: (string | null)[];
@@ -31,8 +28,6 @@ interface GameState {
 export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private games: { [roomId: string]: GameState } = {};
-
-  constructor(@InjectModel(Game.name) private gameModel: Model<Game>) {}
 
   handleDisconnect(client: Socket) {
     for (const roomId in this.games) {
@@ -237,16 +232,6 @@ export class GameGateway implements OnGatewayDisconnect {
           playerCount,
         });
         this.server.to(roomId).emit('gameOver', { winner });
-        try {
-          await this.gameModel.create({
-            player1: game.players.X,
-            player2: game.players.O,
-            board: game.board,
-            winner,
-          });
-        } catch (error) {
-          console.error('Failed to save game to database:', error);
-        }
         return;
       }
 
@@ -261,16 +246,6 @@ export class GameGateway implements OnGatewayDisconnect {
           playerCount,
         });
         this.server.to(roomId).emit('gameOver', { winner: 'Draw' });
-        try {
-          await this.gameModel.create({
-            player1: game.players.X,
-            player2: game.players.O,
-            board: game.board,
-            winner: 'draw',
-          });
-        } catch (error) {
-          console.error('Failed to save game to database:', error);
-        }
         return;
       }
 

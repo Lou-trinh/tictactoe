@@ -1,16 +1,10 @@
 import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { GameModule } from './game/game.module';
 
 @Module({
-  imports: [
-    MongooseModule.forRoot(
-      process.env.MONGODB_URI ?? 'mongodb://172.22.218.33:27017/tictactoe',
-    ),
-    GameModule,
-  ],
+  imports: [GameModule],
   controllers: [AppController],
   providers: [AppService],
 })
