@@ -158,7 +158,7 @@ export default defineComponent({
 
     const initSocket = () => {
       const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-ixk9.onrender.com';
-      const s = io(socketUrl);
+      const s = io(socketUrl, { transports: ['websocket'] });
       socket.value = s;
 
       s.on('connect', () => {

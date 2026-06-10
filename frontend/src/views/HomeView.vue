@@ -43,7 +43,7 @@ export default defineComponent({
 
     onMounted(() => {
       const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-ixk9.onrender.com';
-      socket = io(socketUrl);
+      socket = io(socketUrl, { transports: ['websocket'] });
 
       socket.on('connect', () => {
         console.log('CLIENT: Đã kết nối với server!');
