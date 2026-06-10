@@ -157,7 +157,7 @@ export default defineComponent({
     };
 
     const initSocket = () => {
-      const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-production-faa9.up.railway.app';
+      const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-ixk9.onrender.com';
       const s = io(socketUrl);
       socket.value = s;
 
