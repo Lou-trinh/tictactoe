@@ -227,7 +227,8 @@ export default defineComponent({
     };
 
     const initSocket = () => {
-      socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
+      const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-production-faa9.up.railway.app';
+      socket = io(socketUrl);
 
       socket.on('connect', () => {
         console.log('[Client] Connected to server');

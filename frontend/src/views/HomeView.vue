@@ -42,7 +42,8 @@ export default defineComponent({
     });
 
     onMounted(() => {
-      socket = io('https://tictactoe-backend-production-faa9.up.railway.app');
+      const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-production-faa9.up.railway.app';
+      socket = io(socketUrl);
 
       socket.on('connect', () => {
         console.log('CLIENT: Đã kết nối với server!');
