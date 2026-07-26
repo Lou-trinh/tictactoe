@@ -106,6 +106,10 @@
             >
           </div>
 
+          <Transition name="notice">
+            <div v-if="notice" class="notice lobby-notice" role="status">{{ notice }}</div>
+          </Transition>
+
           <div class="simple-rules">
             <div>
               <span>1</span>
@@ -284,8 +288,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
-import { io, type Socket } from 'socket.io-client'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Peer, type DataConnection } from 'peerjs'
 import { chooseAiMove, findWinningLine } from './game/ai'
 
 type PlayerSymbol = 'X' | 'O'
@@ -299,9 +303,7 @@ interface BoardMove {
   player: PlayerSymbol
 }
 
-interface GameState {
-  mode?: GameMode
-  difficulty?: AiDifficulty | null
+interface SharedGameState {
   board: SparseBoard
   currentPlayer: PlayerSymbol
   players: Partial<Record<PlayerSymbol, string>>
@@ -311,6 +313,13 @@ interface GameState {
   moveCount: number
   playerCount: number
 }
+
+type PeerMessage =
+  | { type: 'state'; roomId: string; state: SharedGameState }
+  | { type: 'move'; roomId: string; row: number; col: number }
+  | { type: 'reset'; roomId: string }
+
+type OnlineRole = 'host' | 'guest'
 
 interface VisibleCell {
   row: number
@@ -346,7 +355,10 @@ const lastMove = ref<BoardMove | null>(null)
 const winningCells = ref<string[]>([])
 const moveCount = ref(0)
 const playerCount = ref(0)
-const isConnected = ref(false)
+const isConnected = ref(navigator.onLine)
+const isPeerReady = ref(false)
+const isPeerConnected = ref(false)
+const onlineRole = ref<OnlineRole | null>(null)
 const isJoining = ref(false)
 const notice = ref('')
 const copied = ref(false)
@@ -356,7 +368,10 @@ const originRow = ref(-GRID_CENTER)
 const originCol = ref(-GRID_CENTER)
 const viewportCenter = ref({ row: 0, col: 0 })
 
-let socket: Socket | null = null
+let onlinePeer: Peer | null = null
+let peerConnection: DataConnection | null = null
+let peerSession = 0
+let peerJoinTimer = 0
 let noticeTimer = 0
 let aiMoveTimer = 0
 let adjustingViewport = false
@@ -383,10 +398,15 @@ const currentAiLevel = computed(
   () => AI_LEVELS.find((level) => level.id === aiDifficulty.value) ?? AI_LEVELS[1],
 )
 const aiDifficultyName = computed(() => currentAiLevel.value.name)
-const hasGameConnection = computed(() => activeMode.value === 'ai' || isConnected.value)
+const hasGameConnection = computed(
+  () => activeMode.value === 'ai' || isPeerReady.value || isPeerConnected.value,
+)
 const connectionText = computed(() => {
   if (activeMode.value === 'ai') return 'Máy chơi tại thiết bị'
-  return isConnected.value ? 'Đã nối bàn cờ' : 'Đang tìm máy chủ'
+  if (isPeerConnected.value) return 'Đã nối với đối thủ'
+  if (isPeerReady.value && onlineRole.value === 'host') return 'Phòng đã sẵn sàng'
+  if (isJoining.value) return 'Đang kết nối phòng'
+  return isConnected.value ? 'Sẵn sàng chơi trực tuyến' : 'Thiết bị đang mất mạng'
 })
 
 const isMyTurn = computed(
@@ -394,7 +414,16 @@ const isMyTurn = computed(
 )
 
 const status = computed(() => {
-  if (activeMode.value !== 'ai' && !isConnected.value) return 'Mất kết nối, đang thử nối lại...'
+  if (
+    activeMode.value === 'online' &&
+    onlineRole.value === 'guest' &&
+    !isPeerConnected.value
+  ) {
+    return 'Đã mất kết nối với chủ phòng. Hãy rời chiếu và vào lại.'
+  }
+  if (activeMode.value !== 'ai' && !isPeerReady.value && !isPeerConnected.value) {
+    return 'Kết nối phòng đã bị gián đoạn.'
+  }
   if (winner.value) {
     if (activeMode.value === 'ai') {
       return winner.value === 'X'
@@ -442,26 +471,336 @@ const showNotice = (message: string) => {
   }, 3600)
 }
 
-const resetLocalBoard = () => {
+const resetMatchPosition = () => {
   board.value = {}
   currentPlayer.value = 'X'
-  players.value = {}
   winner.value = null
   lastMove.value = null
   winningCells.value = []
   moveCount.value = 0
+}
+
+const resetLocalBoard = () => {
+  resetMatchPosition()
+  players.value = {}
   playerCount.value = 0
+}
+
+const clearPeerJoinTimer = () => {
+  window.clearTimeout(peerJoinTimer)
+  peerJoinTimer = 0
+}
+
+const peerIdForRoom = (value: string) => {
+  let hash = 2166136261
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `co-moc-v2-${(hash >>> 0).toString(36)}`
+}
+
+const isPeerMessage = (value: unknown): value is PeerMessage => {
+  if (!value || typeof value !== 'object') return false
+  const type = (value as { type?: unknown }).type
+  const messageRoomId = (value as { roomId?: unknown }).roomId
+  return (
+    (type === 'state' || type === 'move' || type === 'reset') &&
+    typeof messageRoomId === 'string'
+  )
+}
+
+const cleanupOnlineTransport = () => {
+  peerSession += 1
+  clearPeerJoinTimer()
+  const connection = peerConnection
+  const peer = onlinePeer
+  peerConnection = null
+  onlinePeer = null
+  isPeerReady.value = false
+  isPeerConnected.value = false
+  onlineRole.value = null
+  connection?.close()
+  peer?.destroy()
+}
+
+const failOnlineJoin = (message: string) => {
+  cleanupOnlineTransport()
+  isJoining.value = false
+  activeMode.value = null
+  joinedRoomId.value = ''
+  playerSymbol.value = null
+  resetLocalBoard()
+  showNotice(message)
+}
+
+const sharedGameState = (): SharedGameState => ({
+  board: { ...board.value },
+  currentPlayer: currentPlayer.value,
+  players: { ...players.value },
+  winner: winner.value,
+  lastMove: lastMove.value ? { ...lastMove.value } : null,
+  winningCells: [...winningCells.value],
+  moveCount: moveCount.value,
+  playerCount: playerCount.value,
+})
+
+const sendPeerMessage = (message: PeerMessage) => {
+  if (!peerConnection?.open) return false
+  peerConnection.send(message)
+  return true
+}
+
+const broadcastOnlineState = () => {
+  if (!joinedRoomId.value) return
+  sendPeerMessage({
+    type: 'state',
+    roomId: joinedRoomId.value,
+    state: sharedGameState(),
+  })
+}
+
+const applySharedGameState = (state: SharedGameState) => {
+  board.value = { ...state.board }
+  currentPlayer.value = state.currentPlayer
+  players.value = { ...state.players }
+  winner.value = state.winner
+  lastMove.value = state.lastMove ? { ...state.lastMove } : null
+  winningCells.value = [...state.winningCells]
+  moveCount.value = state.moveCount
+  playerCount.value = state.playerCount
+}
+
+const enterOnlineRoom = (room: string, symbol: PlayerSymbol, count: number) => {
+  resetLocalBoard()
+  activeMode.value = 'online'
+  joinedRoomId.value = room
+  playerSymbol.value = symbol
+  onlineRole.value = symbol === 'X' ? 'host' : 'guest'
+  players.value =
+    count === 2 ? { X: 'P2P_HOST', O: 'P2P_GUEST' } : { [symbol]: 'P2P_PLAYER' }
+  playerCount.value = count
+  isJoining.value = false
+  void nextTick(() => centerBoard(0, 0))
+}
+
+const handlePeerConnectionClosed = (connection: DataConnection, session: number) => {
+  if (session !== peerSession || peerConnection !== connection) return
+  peerConnection = null
+  isPeerConnected.value = false
+  resetMatchPosition()
+
+  if (onlineRole.value === 'host') {
+    players.value = { X: 'P2P_HOST' }
+    playerCount.value = 1
+    showNotice('Đối thủ đã rời phòng. Bàn cờ đã được làm mới để chờ người tiếp theo.')
+    return
+  }
+
+  players.value = { O: 'P2P_GUEST' }
+  playerCount.value = 1
+  showNotice('Chủ phòng đã rời hoặc kết nối bị gián đoạn. Hãy rời chiếu và vào lại phòng.')
+}
+
+const handlePeerMove = (row: number, col: number, player: PlayerSymbol) => {
+  if (
+    !Number.isSafeInteger(row) ||
+    !Number.isSafeInteger(col) ||
+    playerCount.value !== 2 ||
+    winner.value ||
+    currentPlayer.value !== player ||
+    board.value[keyFor(row, col)]
+  ) {
+    broadcastOnlineState()
+    return
+  }
+
+  applyLocalMove(row, col, player)
+  broadcastOnlineState()
+}
+
+const bindPeerConnection = (
+  connection: DataConnection,
+  session: number,
+  role: OnlineRole,
+  room: string,
+) => {
+  peerConnection = connection
+
+  connection.on('open', () => {
+    if (session !== peerSession || peerConnection !== connection) {
+      connection.close()
+      return
+    }
+
+    clearPeerJoinTimer()
+    isPeerConnected.value = true
+    if (role === 'host') {
+      resetMatchPosition()
+      players.value = { X: 'P2P_HOST', O: 'P2P_GUEST' }
+      playerCount.value = 2
+      showNotice('Đối thủ đã vào phòng. Quân X đi trước.')
+      broadcastOnlineState()
+      return
+    }
+
+    enterOnlineRoom(room, 'O', 2)
+  })
+
+  connection.on('data', (rawMessage: unknown) => {
+    if (
+      session !== peerSession ||
+      peerConnection !== connection ||
+      !isPeerMessage(rawMessage) ||
+      rawMessage.roomId !== room
+    ) {
+      return
+    }
+
+    if (role === 'host') {
+      if (rawMessage.type === 'move') handlePeerMove(rawMessage.row, rawMessage.col, 'O')
+      if (rawMessage.type === 'reset' && winner.value) {
+        resetMatchPosition()
+        broadcastOnlineState()
+      }
+      return
+    }
+
+    if (rawMessage.type === 'state') applySharedGameState(rawMessage.state)
+  })
+
+  connection.on('close', () => handlePeerConnectionClosed(connection, session))
+  connection.on('error', () => {
+    if (session !== peerSession) return
+    if (isJoining.value) {
+      failOnlineJoin('Không thể kết nối tới phòng. Hãy kiểm tra lại mã và thử lần nữa.')
+    } else {
+      showNotice('Kết nối với đối thủ gặp lỗi. Hãy rời chiếu và vào lại phòng.')
+    }
+  })
+}
+
+const bindPeerLifecycle = (peer: Peer, session: number, role: OnlineRole) => {
+  peer.on('disconnected', () => {
+    if (session !== peerSession) return
+    isPeerReady.value = false
+    if (!peer.destroyed) {
+      try {
+        peer.reconnect()
+      } catch {
+        // PeerJS sẽ phát sự kiện error nếu không thể kết nối lại máy chủ tín hiệu.
+      }
+    }
+  })
+
+  peer.on('close', () => {
+    if (session !== peerSession) return
+    isPeerReady.value = false
+    isPeerConnected.value = false
+    if (activeMode.value === 'online') {
+      showNotice('Kết nối phòng đã đóng. Hãy rời chiếu và vào lại phòng.')
+    }
+  })
+
+  peer.on('error', (error: Error & { type?: string }) => {
+    if (session !== peerSession) return
+    if (error.type === 'unavailable-id' && role === 'host') {
+      failOnlineJoin('Mã phòng này đã được tạo. Hãy dùng mã khác hoặc chọn Vào phòng.')
+      return
+    }
+    if (error.type === 'peer-unavailable' && role === 'guest') {
+      failOnlineJoin('Không tìm thấy phòng này. Hãy kiểm tra mã hoặc nhờ chủ phòng tạo lại.')
+      return
+    }
+    if (isJoining.value) {
+      failOnlineJoin('Chưa thể mở kết nối phòng. Hãy kiểm tra mạng và thử lại.')
+      return
+    }
+    showNotice('Kết nối trực tuyến đang gặp sự cố.')
+  })
+}
+
+const hostOnlineRoom = (room: string) => {
+  cleanupOnlineTransport()
+  isJoining.value = true
+  onlineRole.value = 'host'
+  const session = peerSession
+  const peer = new Peer(peerIdForRoom(room))
+  onlinePeer = peer
+  bindPeerLifecycle(peer, session, 'host')
+
+  peerJoinTimer = window.setTimeout(() => {
+    if (session === peerSession && isJoining.value) {
+      failOnlineJoin('Tạo phòng mất quá nhiều thời gian. Hãy kiểm tra mạng và thử lại.')
+    }
+  }, 12000)
+
+  peer.on('open', () => {
+    if (session !== peerSession) return
+    clearPeerJoinTimer()
+    isPeerReady.value = true
+    if (
+      activeMode.value === 'online' &&
+      joinedRoomId.value === room &&
+      playerSymbol.value === 'X'
+    ) {
+      return
+    }
+    enterOnlineRoom(room, 'X', 1)
+  })
+
+  peer.on('connection', (connection: DataConnection) => {
+    if (session !== peerSession || connection.metadata?.roomId !== room) {
+      connection.close()
+      return
+    }
+    if (peerConnection?.open) {
+      connection.close()
+      return
+    }
+    peerConnection?.close()
+    bindPeerConnection(connection, session, 'host', room)
+  })
+}
+
+const joinOnlineRoom = (room: string) => {
+  cleanupOnlineTransport()
+  isJoining.value = true
+  onlineRole.value = 'guest'
+  const session = peerSession
+  const peer = new Peer()
+  onlinePeer = peer
+  bindPeerLifecycle(peer, session, 'guest')
+
+  peerJoinTimer = window.setTimeout(() => {
+    if (session === peerSession && isJoining.value) {
+      failOnlineJoin('Không kết nối được tới phòng. Hãy kiểm tra mã và thử lại.')
+    }
+  }, 15000)
+
+  peer.on('open', () => {
+    if (session !== peerSession) return
+    isPeerReady.value = true
+    if (peerConnection?.open) return
+    const connection = peer.connect(peerIdForRoom(room), {
+      reliable: true,
+      serialization: 'json',
+      metadata: { roomId: room },
+    })
+    bindPeerConnection(connection, session, 'guest', room)
+  })
 }
 
 const joinGame = () => {
   const normalizedRoomId = roomId.value.trim()
-  if (!socket || !ROOM_ID_PATTERN.test(normalizedRoomId)) {
-    showNotice('Mã phòng chưa đúng định dạng.')
+  if (!isConnected.value || !ROOM_ID_PATTERN.test(normalizedRoomId)) {
+    showNotice(
+      isConnected.value ? 'Mã phòng chưa đúng định dạng.' : 'Thiết bị đang mất kết nối mạng.',
+    )
     return
   }
-  isJoining.value = true
   roomId.value = normalizedRoomId
-  socket.emit('joinGame', { roomId: normalizedRoomId })
+  joinOnlineRoom(normalizedRoomId)
 }
 
 const createRoom = () => {
@@ -470,8 +809,9 @@ const createRoom = () => {
     .toString(36)
     .slice(0, 6)
     .toUpperCase()
-  roomId.value = `MOC-${randomPart}`
-  joinGame()
+  const generatedRoomId = `MOC-${randomPart}`
+  roomId.value = generatedRoomId
+  hostOnlineRoom(generatedRoomId)
 }
 
 const startAiGame = () => {
@@ -519,8 +859,11 @@ const makeMove = (row: number, col: number) => {
     if (!winner.value) queueLocalAiMove()
     return
   }
-  if (!socket) return
-  socket.emit('makeMove', { roomId: joinedRoomId.value, row, col })
+  if (onlineRole.value === 'host') {
+    handlePeerMove(row, col, 'X')
+    return
+  }
+  sendPeerMessage({ type: 'move', roomId: joinedRoomId.value, row, col })
 }
 
 const canPlaceAt = (key: string) =>
@@ -531,14 +874,17 @@ const resetGame = () => {
     startAiGame()
     return
   }
-  socket?.emit('resetGame', { roomId: joinedRoomId.value })
+  if (onlineRole.value === 'host') {
+    resetMatchPosition()
+    broadcastOnlineState()
+    return
+  }
+  sendPeerMessage({ type: 'reset', roomId: joinedRoomId.value })
 }
 
 const leaveGame = () => {
   window.clearTimeout(aiMoveTimer)
-  if (activeMode.value === 'online' && socket && isConnected.value && joinedRoomId.value) {
-    socket.emit('leaveGame', { roomId: joinedRoomId.value })
-  }
+  if (activeMode.value === 'online') cleanupOnlineTransport()
   joinedRoomId.value = ''
   activeMode.value = null
   playerSymbol.value = null
@@ -763,77 +1109,28 @@ const handleBoardClickCapture = (event: MouseEvent) => {
   suppressBoardClick = false
 }
 
-const applyGameState = (payload: GameState) => {
-  activeMode.value = payload.mode ?? activeMode.value ?? 'online'
-  if (payload.difficulty) aiDifficulty.value = payload.difficulty
-  board.value = payload.board
-  currentPlayer.value = payload.currentPlayer
-  players.value = payload.players
-  winner.value = payload.winner
-  lastMove.value = payload.lastMove
-  winningCells.value = payload.winningCells
-  moveCount.value = payload.moveCount
-  playerCount.value = payload.playerCount
+const handleBrowserOnline = () => {
+  isConnected.value = true
 }
 
-const initSocket = () => {
-  const socketUrl = import.meta.env.VITE_SOCKET_URL ?? 'https://tictactoe-backend-ixk9.onrender.com'
-  socket = io(socketUrl, { transports: ['websocket'] })
-
-  socket.on('connect', () => {
-    isConnected.value = true
-    if (joinedRoomId.value && activeMode.value === 'online') {
-      isJoining.value = true
-      socket?.emit('joinGame', { roomId: joinedRoomId.value })
-    }
-  })
-
-  socket.on('disconnect', () => {
-    isConnected.value = false
-    isJoining.value = false
-    if (joinedRoomId.value && activeMode.value === 'online') {
-      showNotice('Kết nối bị gián đoạn. Trò chơi sẽ tự vào lại khi có mạng.')
-    }
-  })
-
-  socket.on(
-    'playerAssigned',
-    (payload: {
-      playerSymbol: PlayerSymbol
-      playerCount: number
-      roomId?: string
-      mode?: GameMode
-      difficulty?: AiDifficulty
-    }) => {
-      playerSymbol.value = payload.playerSymbol
-      playerCount.value = payload.playerCount
-      joinedRoomId.value = payload.roomId ?? roomId.value
-      activeMode.value = payload.mode ?? selectedLobbyMode.value
-      if (payload.difficulty) aiDifficulty.value = payload.difficulty
-      isJoining.value = false
-      void nextTick(() => centerBoard(0, 0))
-    },
-  )
-
-  socket.on('gameState', applyGameState)
-  socket.on('playerCountUpdate', (payload: { playerCount: number }) => {
-    playerCount.value = payload.playerCount
-  })
-  socket.on('gameOver', (payload: { winner: PlayerSymbol | null; winningCells?: string[] }) => {
-    winner.value = payload.winner
-    winningCells.value = payload.winningCells ?? []
-  })
-  socket.on('gameNotice', (payload: { message: string }) => {
-    showNotice(payload.message)
-  })
-  socket.on('gameError', (payload: { message: string }) => {
-    isJoining.value = false
-    showNotice(payload.message)
-  })
+const handleBrowserOffline = () => {
+  isConnected.value = false
+  if (activeMode.value === 'online') {
+    showNotice('Thiết bị đã mất mạng. Kết nối phòng có thể bị gián đoạn.')
+  }
 }
 
 onMounted(() => {
-  initSocket()
+  window.addEventListener('online', handleBrowserOnline)
+  window.addEventListener('offline', handleBrowserOffline)
+})
+
+onBeforeUnmount(() => {
+  window.clearTimeout(aiMoveTimer)
+  window.clearTimeout(noticeTimer)
+  cleanupOnlineTransport()
+  window.removeEventListener('online', handleBrowserOnline)
+  window.removeEventListener('offline', handleBrowserOffline)
 })
 </script>
 

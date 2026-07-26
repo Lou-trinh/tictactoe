@@ -10,16 +10,16 @@ ngang, hàng dọc hoặc đường chéo sẽ thắng.
 - Bàn cờ theo hệ tọa độ không giới hạn, nhấn giữ và kéo theo mọi hướng.
 - Khung nhìn đứng yên sau mỗi nước; nhấn giữ rồi kéo để di chuyển bàn cờ.
 - Chỉ render vùng 35 × 35 ô đang nhìn thấy để giao diện luôn nhẹ.
-- Tạo phòng, chia sẻ mã phòng và chơi trực tuyến bằng Socket.IO.
+- Tạo phòng, chia sẻ mã phòng và chơi trực tuyến trực tiếp giữa hai trình duyệt bằng WebRTC.
 - Đấu với máy ở ba mức Dễ, Thường và Khó, chạy trực tiếp trên thiết bị.
-- Server kiểm tra lượt chơi, ô đã đánh và kết quả thắng.
+- Thiết bị tạo phòng giữ trạng thái, kiểm tra lượt chơi, ô đã đánh và kết quả thắng.
 - Tự đưa bàn cờ về gốc, đi đến nước mới nhất hoặc dịch chuyển bằng cụm điều hướng.
 - Giao diện responsive cho máy tính và điện thoại.
 
 ## Công nghệ
 
-- Frontend: Vue 3, TypeScript, Vite, Socket.IO Client.
-- Backend: NestJS, TypeScript, Socket.IO.
+- Frontend: Vue 3, TypeScript, Vite, PeerJS/WebRTC.
+- Backend NestJS/Socket.IO vẫn được giữ trong repository cho mục đích tham khảo và phát triển.
 - Kiểm thử: Jest, Supertest, ESLint, Vue TypeScript.
 
 ## Chạy local
@@ -27,24 +27,9 @@ ngang, hàng dọc hoặc đường chéo sẽ thắng.
 Yêu cầu Node.js 20.19+ hoặc 22.12+.
 
 ```bash
-cd backend
-npm install
-npm run start:dev
-```
-
-Mở terminal khác:
-
-```bash
 cd frontend
-npm install
-set VITE_SOCKET_URL=http://localhost:3000
+pnpm install
 npm run dev
-```
-
-Với PowerShell, thay lệnh `set` bằng:
-
-```powershell
-$env:VITE_SOCKET_URL = "http://localhost:3000"
 ```
 
 ## Kiểm tra
@@ -63,11 +48,12 @@ npx eslint .
 ## Kiến trúc bàn cờ
 
 Frontend giữ một cửa sổ ảo có kích thước cố định và đổi tọa độ gốc khi người
-chơi cuộn gần mép. Backend lưu các nước đi dưới dạng sparse board với khóa
-`row,col`, nên bộ nhớ chỉ tăng theo số nước đã đánh thay vì diện tích bàn cờ.
+chơi kéo gần mép. Thiết bị tạo phòng lưu các nước đi dưới dạng sparse board với khóa
+`row,col`, rồi đồng bộ trạng thái qua kênh dữ liệu WebRTC nên bộ nhớ chỉ tăng theo
+số nước đã đánh thay vì diện tích bàn cờ.
 
-Trạng thái phòng hiện được lưu trong bộ nhớ của backend. Khi server khởi động
-lại, các phòng đang chơi sẽ được tạo lại từ đầu.
+Mã phòng chỉ dùng để hai trình duyệt tìm nhau qua máy chủ tín hiệu PeerJS. Sau khi
+kết nối, trạng thái ván cờ được truyền trực tiếp giữa hai thiết bị.
 
 ## Ba mức độ máy chơi
 

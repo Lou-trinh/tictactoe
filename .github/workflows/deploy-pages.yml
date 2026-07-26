@@ -40,8 +40,6 @@ jobs:
 
       - name: Build
         run: pnpm build
-        env:
-          VITE_SOCKET_URL: https://tictactoe-backend-ixk9.onrender.com
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
