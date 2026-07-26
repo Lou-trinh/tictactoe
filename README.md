@@ -10,6 +10,7 @@ ngang, hàng dọc hoặc đường chéo sẽ thắng.
 - Bàn cờ theo hệ tọa độ không giới hạn, có thể cuộn theo mọi hướng.
 - Chỉ render vùng 35 × 35 ô đang nhìn thấy để giao diện luôn nhẹ.
 - Tạo phòng, chia sẻ mã phòng và chơi trực tuyến bằng Socket.IO.
+- Đấu với máy ở ba mức Dễ, Thường và Khó.
 - Server kiểm tra lượt chơi, ô đã đánh và kết quả thắng.
 - Tự đưa bàn cờ về gốc, đi đến nước mới nhất hoặc dịch chuyển bằng cụm điều hướng.
 - Giao diện responsive cho máy tính và điện thoại.
@@ -66,3 +67,10 @@ chơi cuộn gần mép. Backend lưu các nước đi dưới dạng sparse boa
 
 Trạng thái phòng hiện được lưu trong bộ nhớ của backend. Khi server khởi động
 lại, các phòng đang chơi sẽ được tạo lại từ đầu.
+
+## Ba mức độ máy chơi
+
+- **Dễ:** chọn ngẫu nhiên một ô hợp lệ gần khu vực đang chơi.
+- **Thường:** biết hoàn thành nước thắng, chặn đối thủ và cân bằng công–thủ.
+- **Khó:** ngoài các nước chiến thuật tức thời còn dùng minimax với alpha-beta
+  để tính trước các lượt đáp trả.

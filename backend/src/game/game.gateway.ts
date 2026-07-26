@@ -7,6 +7,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { chooseAiMove, type AiDifficulty } from './game-ai';
 import {
   cellKey,
   findWinningLine,
@@ -16,6 +17,8 @@ import {
 } from './game-rules';
 
 interface GameState {
+  mode: 'online' | 'ai';
+  difficulty: AiDifficulty | null;
   board: SparseBoard;
   currentPlayer: PlayerSymbol;
   players: Partial<Record<PlayerSymbol, string>>;
@@ -29,12 +32,18 @@ interface RoomPayload {
   roomId: string;
 }
 
+interface StartAiPayload {
+  difficulty: AiDifficulty;
+}
+
 interface MovePayload extends RoomPayload {
   row: number;
   col: number;
 }
 
 const ROOM_ID_PATTERN = /^[\p{L}\p{N}_-]{1,32}$/u;
+const AI_DIFFICULTIES = new Set<AiDifficulty>(['easy', 'normal', 'hard']);
+const AI_PLAYER_ID = '__AI__';
 
 @WebSocketGateway({
   cors: {
@@ -50,12 +59,47 @@ export class GameGateway implements OnGatewayDisconnect {
   @WebSocketServer() server!: Server;
 
   private readonly games = new Map<string, GameState>();
+  private readonly aiTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   handleDisconnect(client: Socket) {
     for (const [roomId, game] of this.games.entries()) {
       const player = this.getPlayerSymbol(game, client.id);
       if (player) this.removePlayer(roomId, game, player, client.id);
     }
+  }
+
+  @SubscribeMessage('startAiGame')
+  async handleStartAiGame(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: StartAiPayload,
+  ) {
+    if (!AI_DIFFICULTIES.has(data?.difficulty)) {
+      this.sendError(client, 'Mức độ máy chơi không hợp lệ.');
+      return;
+    }
+
+    const occupiedRoom = this.findRoomByClient(client.id);
+    if (occupiedRoom) {
+      this.sendError(client, 'Bạn đang ở một bàn cờ khác. Hãy rời bàn trước.');
+      return;
+    }
+
+    const roomId = `AI-${client.id}`;
+    const game = this.createGame('ai', data.difficulty);
+    game.players.X = client.id;
+    game.players.O = AI_PLAYER_ID;
+    this.games.set(roomId, game);
+    await client.join(roomId);
+
+    client.emit('playerAssigned', {
+      playerSymbol: 'X',
+      playerCount: 2,
+      roomId,
+      mode: 'ai',
+      difficulty: data.difficulty,
+    });
+    this.emitGameState(roomId, game);
+    client.emit('gameReady', { roomId });
   }
 
   @SubscribeMessage('joinGame')
@@ -80,11 +124,16 @@ export class GameGateway implements OnGatewayDisconnect {
 
     let game = this.games.get(roomId);
     if (!game) {
-      game = this.createGame();
+      game = this.createGame('online');
       game.players.X = client.id;
       this.games.set(roomId, game);
       await client.join(roomId);
-      client.emit('playerAssigned', { playerSymbol: 'X', playerCount: 1 });
+      client.emit('playerAssigned', {
+        playerSymbol: 'X',
+        playerCount: 1,
+        roomId,
+        mode: 'online',
+      });
       this.emitGameState(roomId, game);
       return;
     }
@@ -95,6 +144,8 @@ export class GameGateway implements OnGatewayDisconnect {
       client.emit('playerAssigned', {
         playerSymbol: existingPlayer,
         playerCount: this.playerCount(game),
+        roomId,
+        mode: 'online',
       });
       this.emitGameState(roomId, game);
       return;
@@ -112,6 +163,8 @@ export class GameGateway implements OnGatewayDisconnect {
     client.emit('playerAssigned', {
       playerSymbol: assignedPlayer,
       playerCount: this.playerCount(game),
+      roomId,
+      mode: 'online',
     });
     this.emitGameState(roomId, game);
     this.server.to(roomId).emit('gameReady', { roomId });
@@ -162,29 +215,12 @@ export class GameGateway implements OnGatewayDisconnect {
       return;
     }
 
-    game.board[key] = player;
-    game.lastMove = { row: data.row, col: data.col, player };
-    game.moveCount += 1;
-
-    const winningCells = findWinningLine(
-      game.board,
-      data.row,
-      data.col,
-      player,
-    );
-    if (winningCells) {
-      game.winner = player;
-      game.winningCells = winningCells;
-    } else {
-      game.currentPlayer = player === 'X' ? 'O' : 'X';
-    }
-
+    this.applyMove(game, data.row, data.col, player);
     this.emitGameState(roomId, game);
     if (game.winner) {
-      this.server.to(roomId).emit('gameOver', {
-        winner: game.winner,
-        winningCells: game.winningCells,
-      });
+      this.emitGameOver(roomId, game);
+    } else if (game.mode === 'ai') {
+      this.queueAiMove(roomId);
     }
   }
 
@@ -232,8 +268,13 @@ export class GameGateway implements OnGatewayDisconnect {
     this.removePlayer(roomId, game, player, client.id);
   }
 
-  private createGame(): GameState {
+  private createGame(
+    mode: GameState['mode'],
+    difficulty: AiDifficulty | null = null,
+  ): GameState {
     return {
+      mode,
+      difficulty,
       board: {},
       currentPlayer: 'X',
       players: {},
@@ -259,6 +300,12 @@ export class GameGateway implements OnGatewayDisconnect {
     player: PlayerSymbol,
     clientId: string,
   ) {
+    if (game.mode === 'ai') {
+      this.clearAiTimer(roomId);
+      this.games.delete(roomId);
+      return;
+    }
+
     delete game.players[player];
     if (this.playerCount(game) === 0) {
       this.games.delete(roomId);
@@ -293,6 +340,7 @@ export class GameGateway implements OnGatewayDisconnect {
   }
 
   private playerCount(game: GameState) {
+    if (game.mode === 'ai') return game.players.X ? 2 : 0;
     return Number(Boolean(game.players.X)) + Number(Boolean(game.players.O));
   }
 
@@ -311,5 +359,60 @@ export class GameGateway implements OnGatewayDisconnect {
 
   private sendError(client: Socket, message: string) {
     client.emit('gameError', { message });
+  }
+
+  private applyMove(
+    game: GameState,
+    row: number,
+    col: number,
+    player: PlayerSymbol,
+  ) {
+    game.board[cellKey(row, col)] = player;
+    game.lastMove = { row, col, player };
+    game.moveCount += 1;
+
+    const winningCells = findWinningLine(game.board, row, col, player);
+    if (winningCells) {
+      game.winner = player;
+      game.winningCells = winningCells;
+      return;
+    }
+    game.currentPlayer = player === 'X' ? 'O' : 'X';
+  }
+
+  private queueAiMove(roomId: string) {
+    this.clearAiTimer(roomId);
+    const timer = setTimeout(() => {
+      this.aiTimers.delete(roomId);
+      const game = this.games.get(roomId);
+      if (
+        !game ||
+        game.mode !== 'ai' ||
+        !game.difficulty ||
+        game.winner ||
+        game.currentPlayer !== 'O'
+      ) {
+        return;
+      }
+
+      const move = chooseAiMove(game.board, game.difficulty, 'O');
+      this.applyMove(game, move.row, move.col, 'O');
+      this.emitGameState(roomId, game);
+      if (game.winner) this.emitGameOver(roomId, game);
+    }, 420);
+    this.aiTimers.set(roomId, timer);
+  }
+
+  private clearAiTimer(roomId: string) {
+    const timer = this.aiTimers.get(roomId);
+    if (timer) clearTimeout(timer);
+    this.aiTimers.delete(roomId);
+  }
+
+  private emitGameOver(roomId: string, game: GameState) {
+    this.server.to(roomId).emit('gameOver', {
+      winner: game.winner,
+      winningCells: game.winningCells,
+    });
   }
 }

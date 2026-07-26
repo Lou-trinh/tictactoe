@@ -23,47 +23,99 @@
         <section v-if="!playerSymbol" key="lobby" class="lobby">
           <div class="folk-divider" aria-hidden="true"><i></i><b>✦</b><i></i></div>
           <p class="section-kicker">Mời bạn vào chiếu</p>
-          <h2>Một căn phòng, hai người chơi</h2>
+          <h2>Chọn người cùng so tài</h2>
           <p class="lobby-copy">
-            Tạo mã phòng mới hoặc nhập mã của bạn bè. Quân
-            <strong class="text-x">X đỏ son</strong> đi trước, quân
-            <strong class="text-o">O xanh biển</strong> đi sau.
+            Rủ bạn bè vào chung một phòng hoặc thử sức với máy ở ba mức độ. Bạn luôn cầm
+            <strong class="text-x">X đỏ son</strong> và đi trước khi đấu với máy.
           </p>
 
-          <div class="room-form">
-            <label for="room-id">Mã phòng</label>
-            <div class="room-input-row">
-              <input
-                id="room-id"
-                v-model="roomId"
-                maxlength="32"
-                autocomplete="off"
-                placeholder="Ví dụ: LANG-QUE"
-                :disabled="!isConnected || isJoining"
-                @keyup.enter="joinGame"
-              />
-              <button class="primary-button" :disabled="!canJoin" @click="joinGame">
-                {{ isJoining ? 'Đang vào...' : 'Vào phòng' }}
-              </button>
-            </div>
-            <p>Chỉ dùng chữ, số, dấu gạch ngang hoặc gạch dưới.</p>
+          <div class="mode-selector" aria-label="Chọn chế độ chơi">
+            <button
+              :class="{ selected: selectedLobbyMode === 'online' }"
+              :aria-pressed="selectedLobbyMode === 'online'"
+              @click="selectedLobbyMode = 'online'"
+            >
+              <span aria-hidden="true">友</span>
+              <strong>Đấu cùng bạn</strong>
+              <small>Tạo phòng chơi trực tuyến</small>
+            </button>
+            <button
+              :class="{ selected: selectedLobbyMode === 'ai' }"
+              :aria-pressed="selectedLobbyMode === 'ai'"
+              @click="selectedLobbyMode = 'ai'"
+            >
+              <span aria-hidden="true">棋</span>
+              <strong>Đấu với máy</strong>
+              <small>Ba mức độ thử sức</small>
+            </button>
           </div>
 
-          <button class="new-room-button" :disabled="!isConnected || isJoining" @click="createRoom">
-            <span aria-hidden="true">＋</span>
-            Tạo phòng mới
-          </button>
+          <div v-if="selectedLobbyMode === 'online'" class="mode-panel">
+            <div class="room-form">
+              <label for="room-id">Mã phòng</label>
+              <div class="room-input-row">
+                <input
+                  id="room-id"
+                  v-model="roomId"
+                  maxlength="32"
+                  autocomplete="off"
+                  placeholder="Ví dụ: LANG-QUE"
+                  :disabled="!isConnected || isJoining"
+                  @keyup.enter="joinGame"
+                />
+                <button class="primary-button" :disabled="!canJoin" @click="joinGame">
+                  {{ isJoining ? 'Đang vào...' : 'Vào phòng' }}
+                </button>
+              </div>
+              <p>Chỉ dùng chữ, số, dấu gạch ngang hoặc gạch dưới.</p>
+            </div>
+
+            <button
+              class="new-room-button"
+              :disabled="!isConnected || isJoining"
+              @click="createRoom"
+            >
+              <span aria-hidden="true">＋</span>
+              Tạo phòng mới
+            </button>
+          </div>
+
+          <div v-else class="mode-panel ai-setup">
+            <p class="difficulty-label">Chọn độ khó</p>
+            <div class="difficulty-picker">
+              <button
+                v-for="level in AI_LEVELS"
+                :key="level.id"
+                :class="{ selected: aiDifficulty === level.id }"
+                :aria-pressed="aiDifficulty === level.id"
+                @click="aiDifficulty = level.id"
+              >
+                <span>{{ level.name }}</span>
+                <small>{{ level.description }}</small>
+              </button>
+            </div>
+            <button
+              class="primary-button start-ai-button"
+              :disabled="!isConnected || isJoining"
+              @click="startAiGame"
+            >
+              {{ isJoining ? 'Đang bày bàn...' : `Bắt đầu · Mức ${aiDifficultyName}` }}
+            </button>
+            <small v-if="!isConnected" class="connection-help"
+              >Đang chờ kết nối máy chủ để bày bàn cờ.</small
+            >
+          </div>
 
           <div class="simple-rules">
             <div>
               <span>1</span>
-              <p><strong>Rủ một người bạn</strong><small>Gửi mã phòng để cùng vào bàn.</small></p>
+              <p><strong>Chọn đối thủ</strong><small>Bạn bè hoặc máy với ba mức độ.</small></p>
             </div>
             <div>
               <span>2</span>
               <p>
                 <strong>Đặt quân luân phiên</strong
-                ><small>Cuộn bàn cờ để đi đến bất kỳ tọa độ nào.</small>
+                ><small>Cuộn bàn cờ tới bất kỳ tọa độ nào.</small>
               </p>
             </div>
             <div>
@@ -77,12 +129,17 @@
 
         <section v-else key="game" class="play-layout">
           <aside class="game-sidebar">
-            <div class="room-plaque">
+            <div v-if="activeMode === 'online'" class="room-plaque">
               <span>Phòng đang chơi</span>
               <strong>{{ joinedRoomId }}</strong>
               <button @click="copyRoomCode">
                 {{ copied ? 'Đã chép mã' : 'Chép mã phòng' }}
               </button>
+            </div>
+            <div v-else class="room-plaque ai-plaque">
+              <span>Đang đấu với máy</span>
+              <strong>Mức {{ aiDifficultyName }}</strong>
+              <small>{{ currentAiLevel.description }}</small>
             </div>
 
             <div class="players-panel">
@@ -99,9 +156,16 @@
                 <span class="piece piece-o">O</span>
                 <div>
                   <strong>Quân xanh biển</strong
-                  ><small>{{ players.O ? 'Đã vào bàn' : 'Đang chờ' }}</small>
+                  ><small>{{
+                    activeMode === 'ai'
+                      ? `Máy · ${aiDifficultyName}`
+                      : players.O
+                        ? 'Đã vào bàn'
+                        : 'Đang chờ'
+                  }}</small>
                 </div>
-                <em v-if="playerSymbol === 'O'">Bạn</em>
+                <em v-if="activeMode === 'ai'">Máy</em>
+                <em v-else-if="playerSymbol === 'O'">Bạn</em>
               </div>
             </div>
 
@@ -215,6 +279,8 @@ import { io, type Socket } from 'socket.io-client'
 
 type PlayerSymbol = 'X' | 'O'
 type SparseBoard = Record<string, PlayerSymbol>
+type GameMode = 'online' | 'ai'
+type AiDifficulty = 'easy' | 'normal' | 'hard'
 
 interface BoardMove {
   row: number
@@ -223,6 +289,8 @@ interface BoardMove {
 }
 
 interface GameState {
+  mode?: GameMode
+  difficulty?: AiDifficulty | null
   board: SparseBoard
   currentPlayer: PlayerSymbol
   players: Partial<Record<PlayerSymbol, string>>
@@ -247,9 +315,17 @@ const EDGE_CELLS = 6
 const SHIFT_CELLS = 10
 const PAN_CELLS = 7
 const ROOM_ID_PATTERN = /^[\p{L}\p{N}_-]{1,32}$/u
+const AI_LEVELS: Array<{ id: AiDifficulty; name: string; description: string }> = [
+  { id: 'easy', name: 'Dễ', description: 'Đi ngẫu hứng, phù hợp để làm quen.' },
+  { id: 'normal', name: 'Thường', description: 'Biết tấn công và chặn nước thắng.' },
+  { id: 'hard', name: 'Khó', description: 'Tính trước nhiều nước và giữ thế trận.' },
+]
 
 const roomId = ref('')
 const joinedRoomId = ref('')
+const selectedLobbyMode = ref<GameMode>('online')
+const activeMode = ref<GameMode | null>(null)
+const aiDifficulty = ref<AiDifficulty>('normal')
 const board = ref<SparseBoard>({})
 const currentPlayer = ref<PlayerSymbol>('X')
 const playerSymbol = ref<PlayerSymbol | null>(null)
@@ -279,6 +355,11 @@ const canJoin = computed(
   () => isConnected.value && !isJoining.value && ROOM_ID_PATTERN.test(roomId.value.trim()),
 )
 
+const currentAiLevel = computed(
+  () => AI_LEVELS.find((level) => level.id === aiDifficulty.value) ?? AI_LEVELS[1],
+)
+const aiDifficultyName = computed(() => currentAiLevel.value.name)
+
 const isMyTurn = computed(
   () => playerSymbol.value === currentPlayer.value && playerCount.value === 2,
 )
@@ -286,9 +367,19 @@ const isMyTurn = computed(
 const status = computed(() => {
   if (!isConnected.value) return 'Mất kết nối, đang thử nối lại...'
   if (winner.value) {
+    if (activeMode.value === 'ai') {
+      return winner.value === 'X'
+        ? 'Bạn đã thắng máy bằng năm quân liên tiếp!'
+        : `Máy mức ${aiDifficultyName.value} đã giành phần thắng.`
+    }
     return winner.value === playerSymbol.value
       ? 'Bạn đã nối đủ năm quân!'
       : `Quân ${winner.value} đã nối đủ năm quân.`
+  }
+  if (activeMode.value === 'ai') {
+    return currentPlayer.value === 'X'
+      ? 'Đến lượt bạn đặt quân X.'
+      : `Máy mức ${aiDifficultyName.value} đang tính nước...`
   }
   if (playerCount.value < 2) return 'Đang chờ người chơi thứ hai...'
   if (isMyTurn.value) return `Đến lượt bạn đặt quân ${playerSymbol.value}.`
@@ -355,6 +446,15 @@ const createRoom = () => {
   joinGame()
 }
 
+const startAiGame = () => {
+  if (!socket || !isConnected.value) {
+    showNotice('Chưa kết nối được máy chủ.')
+    return
+  }
+  isJoining.value = true
+  socket.emit('startAiGame', { difficulty: aiDifficulty.value })
+}
+
 const makeMove = (row: number, col: number) => {
   const key = keyFor(row, col)
   if (!socket || !canPlaceAt(key)) return
@@ -373,6 +473,7 @@ const leaveGame = () => {
     socket.emit('leaveGame', { roomId: joinedRoomId.value })
   }
   joinedRoomId.value = ''
+  activeMode.value = null
   playerSymbol.value = null
   isJoining.value = false
   resetLocalBoard()
@@ -475,6 +576,8 @@ const handleBoardScroll = () => {
 }
 
 const applyGameState = (payload: GameState) => {
+  activeMode.value = payload.mode ?? activeMode.value ?? 'online'
+  if (payload.difficulty) aiDifficulty.value = payload.difficulty
   board.value = payload.board
   currentPlayer.value = payload.currentPlayer
   players.value = payload.players
@@ -502,7 +605,11 @@ const initSocket = () => {
     isConnected.value = true
     if (joinedRoomId.value) {
       isJoining.value = true
-      socket?.emit('joinGame', { roomId: joinedRoomId.value })
+      if (activeMode.value === 'ai') {
+        socket?.emit('startAiGame', { difficulty: aiDifficulty.value })
+      } else {
+        socket?.emit('joinGame', { roomId: joinedRoomId.value })
+      }
     }
   })
 
@@ -514,13 +621,24 @@ const initSocket = () => {
     }
   })
 
-  socket.on('playerAssigned', (payload: { playerSymbol: PlayerSymbol; playerCount: number }) => {
-    playerSymbol.value = payload.playerSymbol
-    playerCount.value = payload.playerCount
-    joinedRoomId.value = roomId.value
-    isJoining.value = false
-    void nextTick(() => centerBoard(0, 0))
-  })
+  socket.on(
+    'playerAssigned',
+    (payload: {
+      playerSymbol: PlayerSymbol
+      playerCount: number
+      roomId?: string
+      mode?: GameMode
+      difficulty?: AiDifficulty
+    }) => {
+      playerSymbol.value = payload.playerSymbol
+      playerCount.value = payload.playerCount
+      joinedRoomId.value = payload.roomId ?? roomId.value
+      activeMode.value = payload.mode ?? selectedLobbyMode.value
+      if (payload.difficulty) aiDifficulty.value = payload.difficulty
+      isJoining.value = false
+      void nextTick(() => centerBoard(0, 0))
+    },
+  )
 
   socket.on('gameState', applyGameState)
   socket.on('playerCountUpdate', (payload: { playerCount: number }) => {
@@ -766,6 +884,79 @@ footer {
   color: var(--blue);
 }
 
+.mode-selector {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  max-width: 590px;
+  margin: 28px auto 0;
+}
+
+.mode-selector button {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  border: 1px solid rgba(157, 106, 60, 0.38);
+  border-radius: 12px;
+  padding: 13px 15px;
+  color: var(--ink);
+  text-align: left;
+  background: rgba(255, 250, 232, 0.44);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.mode-selector button:hover {
+  transform: translateY(-1px);
+  border-color: #a66a3f;
+}
+
+.mode-selector button.selected {
+  border-color: #8f4c32;
+  background: rgba(179, 106, 55, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(143, 76, 50, 0.16);
+}
+
+.mode-selector span {
+  display: grid;
+  grid-row: 1 / 3;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid #b98552;
+  border-radius: 50%;
+  color: #8f4c32;
+  font-size: 19px;
+  background: #f7e8c8;
+}
+
+.mode-selector strong,
+.mode-selector small {
+  display: block;
+}
+
+.mode-selector strong {
+  font-size: 15px;
+}
+
+.mode-selector small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mode-panel {
+  min-height: 168px;
+}
+
+.mode-panel .room-form {
+  margin-top: 22px;
+}
+
 .room-form {
   max-width: 590px;
   margin: 34px auto 16px;
@@ -870,11 +1061,72 @@ button:disabled {
   background: rgba(151, 95, 52, 0.08);
 }
 
+.ai-setup {
+  max-width: 590px;
+  margin: 22px auto 0;
+}
+
+.difficulty-label {
+  margin: 0 0 9px;
+  color: #75523d;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.difficulty-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+
+.difficulty-picker button {
+  border: 1px solid rgba(157, 106, 60, 0.38);
+  border-radius: 9px;
+  padding: 10px 8px;
+  color: var(--ink);
+  background: rgba(255, 251, 235, 0.58);
+  cursor: pointer;
+}
+
+.difficulty-picker button.selected {
+  border-color: var(--blue);
+  background: rgba(33, 109, 143, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(33, 109, 143, 0.18);
+}
+
+.difficulty-picker span,
+.difficulty-picker small {
+  display: block;
+}
+
+.difficulty-picker span {
+  font-weight: 800;
+}
+
+.difficulty-picker small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.start-ai-button {
+  margin-top: 13px;
+}
+
+.connection-help {
+  display: block;
+  margin-top: 9px;
+  color: #8a6550;
+}
+
 .simple-rules {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  margin-top: 48px;
+  margin-top: 34px;
   text-align: left;
 }
 
@@ -959,6 +1211,17 @@ button:disabled {
   font-size: 12px;
   text-decoration: underline;
   background: none;
+}
+
+.ai-plaque strong {
+  margin-bottom: 5px;
+}
+
+.ai-plaque small {
+  display: block;
+  color: rgba(255, 236, 199, 0.64);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .players-panel {
@@ -1451,6 +1714,29 @@ footer span {
 
   .room-input-row {
     display: grid;
+  }
+
+  .mode-selector {
+    grid-template-columns: 1fr;
+  }
+
+  .difficulty-picker {
+    grid-template-columns: 1fr;
+  }
+
+  .difficulty-picker button {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    align-items: center;
+    text-align: left;
+  }
+
+  .difficulty-picker small {
+    margin-top: 0;
+  }
+
+  .mode-panel {
+    min-height: 0;
   }
 
   .simple-rules {
