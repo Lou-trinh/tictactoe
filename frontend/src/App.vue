@@ -12,9 +12,9 @@
         </div>
       </div>
 
-      <div class="connection-pill" :class="{ online: isConnected }">
+      <div class="connection-pill" :class="{ online: hasGameConnection }">
         <span aria-hidden="true"></span>
-        {{ isConnected ? 'Đã nối bàn cờ' : 'Đang tìm máy chủ' }}
+        {{ connectionText }}
       </div>
     </header>
 
@@ -96,13 +96,13 @@
             </div>
             <button
               class="primary-button start-ai-button"
-              :disabled="!isConnected || isJoining"
+              :disabled="isJoining"
               @click="startAiGame"
             >
-              {{ isJoining ? 'Đang bày bàn...' : `Bắt đầu · Mức ${aiDifficultyName}` }}
+              Bắt đầu · Mức {{ aiDifficultyName }}
             </button>
-            <small v-if="!isConnected" class="connection-help"
-              >Đang chờ kết nối máy chủ để bày bàn cờ.</small
+            <small class="connection-help"
+              >Chế độ này chạy ngay trên thiết bị, không cần chờ máy chủ.</small
             >
           </div>
 
@@ -276,6 +276,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { io, type Socket } from 'socket.io-client'
+import { chooseAiMove, findWinningLine } from './game/ai'
 
 type PlayerSymbol = 'X' | 'O'
 type SparseBoard = Record<string, PlayerSymbol>
@@ -346,6 +347,7 @@ const viewportCenter = ref({ row: 0, col: 0 })
 
 let socket: Socket | null = null
 let noticeTimer = 0
+let aiMoveTimer = 0
 let adjustingViewport = false
 let renderedLastMoveKey = ''
 
@@ -359,13 +361,18 @@ const currentAiLevel = computed(
   () => AI_LEVELS.find((level) => level.id === aiDifficulty.value) ?? AI_LEVELS[1],
 )
 const aiDifficultyName = computed(() => currentAiLevel.value.name)
+const hasGameConnection = computed(() => activeMode.value === 'ai' || isConnected.value)
+const connectionText = computed(() => {
+  if (activeMode.value === 'ai') return 'Máy chơi tại thiết bị'
+  return isConnected.value ? 'Đã nối bàn cờ' : 'Đang tìm máy chủ'
+})
 
 const isMyTurn = computed(
   () => playerSymbol.value === currentPlayer.value && playerCount.value === 2,
 )
 
 const status = computed(() => {
-  if (!isConnected.value) return 'Mất kết nối, đang thử nối lại...'
+  if (activeMode.value !== 'ai' && !isConnected.value) return 'Mất kết nối, đang thử nối lại...'
   if (winner.value) {
     if (activeMode.value === 'ai') {
       return winner.value === 'X'
@@ -447,29 +454,70 @@ const createRoom = () => {
 }
 
 const startAiGame = () => {
-  if (!socket || !isConnected.value) {
-    showNotice('Chưa kết nối được máy chủ.')
-    return
+  window.clearTimeout(aiMoveTimer)
+  resetLocalBoard()
+  activeMode.value = 'ai'
+  joinedRoomId.value = 'AI-LOCAL'
+  playerSymbol.value = 'X'
+  players.value = { X: 'LOCAL_PLAYER', O: 'LOCAL_AI' }
+  playerCount.value = 2
+  isJoining.value = false
+  void nextTick(() => centerBoard(0, 0))
+}
+
+const applyLocalMove = (row: number, col: number, player: PlayerSymbol) => {
+  const key = keyFor(row, col)
+  const nextBoard = { ...board.value, [key]: player }
+  board.value = nextBoard
+  lastMove.value = { row, col, player }
+  moveCount.value += 1
+  renderedLastMoveKey = key
+
+  const winningLine = findWinningLine(nextBoard, row, col, player)
+  if (winningLine) {
+    winner.value = player
+    winningCells.value = winningLine
+  } else {
+    currentPlayer.value = player === 'X' ? 'O' : 'X'
   }
-  isJoining.value = true
-  socket.emit('startAiGame', { difficulty: aiDifficulty.value })
+  void nextTick(centerLatestMove)
+}
+
+const queueLocalAiMove = () => {
+  window.clearTimeout(aiMoveTimer)
+  aiMoveTimer = window.setTimeout(() => {
+    if (activeMode.value !== 'ai' || winner.value || currentPlayer.value !== 'O') return
+    const move = chooseAiMove({ ...board.value }, aiDifficulty.value, 'O')
+    applyLocalMove(move.row, move.col, 'O')
+  }, 420)
 }
 
 const makeMove = (row: number, col: number) => {
   const key = keyFor(row, col)
-  if (!socket || !canPlaceAt(key)) return
+  if (!canPlaceAt(key)) return
+  if (activeMode.value === 'ai') {
+    applyLocalMove(row, col, 'X')
+    if (!winner.value) queueLocalAiMove()
+    return
+  }
+  if (!socket) return
   socket.emit('makeMove', { roomId: joinedRoomId.value, row, col })
 }
 
 const canPlaceAt = (key: string) =>
-  isConnected.value && isMyTurn.value && !winner.value && !board.value[key]
+  hasGameConnection.value && isMyTurn.value && !winner.value && !board.value[key]
 
 const resetGame = () => {
+  if (activeMode.value === 'ai') {
+    startAiGame()
+    return
+  }
   socket?.emit('resetGame', { roomId: joinedRoomId.value })
 }
 
 const leaveGame = () => {
-  if (socket && isConnected.value && joinedRoomId.value) {
+  window.clearTimeout(aiMoveTimer)
+  if (activeMode.value === 'online' && socket && isConnected.value && joinedRoomId.value) {
     socket.emit('leaveGame', { roomId: joinedRoomId.value })
   }
   joinedRoomId.value = ''
@@ -603,20 +651,16 @@ const initSocket = () => {
 
   socket.on('connect', () => {
     isConnected.value = true
-    if (joinedRoomId.value) {
+    if (joinedRoomId.value && activeMode.value === 'online') {
       isJoining.value = true
-      if (activeMode.value === 'ai') {
-        socket?.emit('startAiGame', { difficulty: aiDifficulty.value })
-      } else {
-        socket?.emit('joinGame', { roomId: joinedRoomId.value })
-      }
+      socket?.emit('joinGame', { roomId: joinedRoomId.value })
     }
   })
 
   socket.on('disconnect', () => {
     isConnected.value = false
     isJoining.value = false
-    if (joinedRoomId.value) {
+    if (joinedRoomId.value && activeMode.value === 'online') {
       showNotice('Kết nối bị gián đoạn. Trò chơi sẽ tự vào lại khi có mạng.')
     }
   })
