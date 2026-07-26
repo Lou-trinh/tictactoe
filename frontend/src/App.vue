@@ -115,7 +115,7 @@
               <span>2</span>
               <p>
                 <strong>Đặt quân luân phiên</strong
-                ><small>Cuộn bàn cờ tới bất kỳ tọa độ nào.</small>
+                ><small>Giữ và kéo bàn cờ tới bất kỳ tọa độ nào.</small>
               </p>
             </div>
             <div>
@@ -1630,10 +1630,8 @@ button:disabled {
 .board-viewport {
   width: 100%;
   height: clamp(420px, 58vh, 560px);
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
-  scrollbar-color: #a66f40 #ead4a9;
-  scrollbar-width: thin;
   background: #e5c993;
   cursor: grab;
   contain: layout paint;
@@ -1649,21 +1647,6 @@ button:disabled {
 
 .board-viewport.dragging .infinite-grid {
   pointer-events: none;
-}
-
-.board-viewport::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.board-viewport::-webkit-scrollbar-track {
-  background: #ead4a9;
-}
-
-.board-viewport::-webkit-scrollbar-thumb {
-  border: 2px solid #ead4a9;
-  border-radius: 999px;
-  background: #9a663d;
 }
 
 .infinite-grid {
