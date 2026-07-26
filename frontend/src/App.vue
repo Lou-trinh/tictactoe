@@ -363,6 +363,9 @@ let dragStartX = 0
 let dragStartY = 0
 let dragStartScrollLeft = 0
 let dragStartScrollTop = 0
+let pendingDragScrollLeft = 0
+let pendingDragScrollTop = 0
+let dragAnimationFrame = 0
 let dragMoved = false
 let suppressBoardClick = false
 
@@ -559,10 +562,12 @@ const cellAriaLabel = (cell: VisibleCell) =>
 const updateViewportCenter = () => {
   const viewport = boardViewport.value
   if (!viewport) return
-  viewportCenter.value = {
-    row: originRow.value + Math.floor((viewport.scrollTop + viewport.clientHeight / 2) / CELL_SIZE),
-    col: originCol.value + Math.floor((viewport.scrollLeft + viewport.clientWidth / 2) / CELL_SIZE),
-  }
+  const row =
+    originRow.value + Math.floor((viewport.scrollTop + viewport.clientHeight / 2) / CELL_SIZE)
+  const col =
+    originCol.value + Math.floor((viewport.scrollLeft + viewport.clientWidth / 2) / CELL_SIZE)
+  if (viewportCenter.value.row === row && viewportCenter.value.col === col) return
+  viewportCenter.value = { row, col }
 }
 
 const centerBoard = (row: number, col: number) => {
@@ -574,7 +579,7 @@ const centerBoard = (row: number, col: number) => {
     if (!viewport) return
     viewport.scrollTop = GRID_CENTER * CELL_SIZE - viewport.clientHeight / 2 + CELL_SIZE / 2
     viewport.scrollLeft = GRID_CENTER * CELL_SIZE - viewport.clientWidth / 2 + CELL_SIZE / 2
-    updateViewportCenter()
+    if (!isDragging.value) updateViewportCenter()
     window.requestAnimationFrame(() => {
       adjustingViewport = false
     })
@@ -610,8 +615,10 @@ const shiftInfiniteGrid = (rowShift: number, colShift: number) => {
     if (isDragging.value) {
       dragStartScrollTop -= rowShift * CELL_SIZE
       dragStartScrollLeft -= colShift * CELL_SIZE
+      pendingDragScrollTop -= rowShift * CELL_SIZE
+      pendingDragScrollLeft -= colShift * CELL_SIZE
     }
-    updateViewportCenter()
+    if (!isDragging.value) updateViewportCenter()
     window.requestAnimationFrame(() => {
       adjustingViewport = false
     })
@@ -621,7 +628,7 @@ const shiftInfiniteGrid = (rowShift: number, colShift: number) => {
 const handleBoardScroll = () => {
   const viewport = boardViewport.value
   if (!viewport) return
-  updateViewportCenter()
+  if (!isDragging.value) updateViewportCenter()
   if (adjustingViewport) return
 
   const edge = EDGE_CELLS * CELL_SIZE
@@ -644,13 +651,29 @@ const handleBoardPointerDown = (event: PointerEvent) => {
   if (!viewport || adjustingViewport || (event.pointerType === 'mouse' && event.button !== 0))
     return
 
+  if (dragAnimationFrame) {
+    window.cancelAnimationFrame(dragAnimationFrame)
+    dragAnimationFrame = 0
+  }
   dragPointerId = event.pointerId
   dragStartX = event.clientX
   dragStartY = event.clientY
   dragStartScrollLeft = viewport.scrollLeft
   dragStartScrollTop = viewport.scrollTop
+  pendingDragScrollLeft = viewport.scrollLeft
+  pendingDragScrollTop = viewport.scrollTop
   dragMoved = false
-  isDragging.value = true
+}
+
+const flushDragPosition = () => {
+  dragAnimationFrame = 0
+  const viewport = boardViewport.value
+  if (!viewport) return
+  viewport.scrollTo({
+    left: pendingDragScrollLeft,
+    top: pendingDragScrollTop,
+    behavior: 'auto',
+  })
 }
 
 const handleBoardPointerMove = (event: PointerEvent) => {
@@ -661,11 +684,17 @@ const handleBoardPointerMove = (event: PointerEvent) => {
   const deltaY = event.clientY - dragStartY
   if (!dragMoved && Math.hypot(deltaX, deltaY) < 5) return
 
-  if (!dragMoved) viewport.setPointerCapture(event.pointerId)
-  dragMoved = true
+  if (!dragMoved) {
+    viewport.setPointerCapture(event.pointerId)
+    dragMoved = true
+    isDragging.value = true
+  }
   event.preventDefault()
-  viewport.scrollLeft = dragStartScrollLeft - deltaX
-  viewport.scrollTop = dragStartScrollTop - deltaY
+  pendingDragScrollLeft = dragStartScrollLeft - deltaX
+  pendingDragScrollTop = dragStartScrollTop - deltaY
+  if (!dragAnimationFrame) {
+    dragAnimationFrame = window.requestAnimationFrame(flushDragPosition)
+  }
 }
 
 const handleBoardPointerUp = (event: PointerEvent) => {
@@ -675,10 +704,15 @@ const handleBoardPointerUp = (event: PointerEvent) => {
   if (viewport.hasPointerCapture(event.pointerId)) {
     viewport.releasePointerCapture(event.pointerId)
   }
+  if (dragAnimationFrame) {
+    window.cancelAnimationFrame(dragAnimationFrame)
+    flushDragPosition()
+  }
   suppressBoardClick = dragMoved
   dragPointerId = null
   dragMoved = false
   isDragging.value = false
+  updateViewportCenter()
 
   window.setTimeout(() => {
     suppressBoardClick = false
@@ -1602,13 +1636,19 @@ button:disabled {
   scrollbar-width: thin;
   background: #e5c993;
   cursor: grab;
+  contain: layout paint;
   touch-action: none;
   user-select: none;
+  will-change: scroll-position;
 }
 
 .board-viewport.dragging,
 .board-viewport.dragging .board-cell {
   cursor: grabbing;
+}
+
+.board-viewport.dragging .infinite-grid {
+  pointer-events: none;
 }
 
 .board-viewport::-webkit-scrollbar {
@@ -1630,6 +1670,7 @@ button:disabled {
   display: grid;
   width: max-content;
   background: #c79e65;
+  contain: layout paint;
   user-select: none;
 }
 
@@ -1644,8 +1685,7 @@ button:disabled {
   border-radius: 0;
   color: var(--ink);
   cursor: inherit;
-  background:
-    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.34), transparent 42%), #f3dfb2;
+  background: #f3dfb2;
 }
 
 .board-cell:disabled {
