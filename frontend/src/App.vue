@@ -249,6 +249,8 @@
                     }"
                     :disabled="!canPlaceAt(cell.key)"
                     :aria-label="cellAriaLabel(cell)"
+                    :data-row="cell.row"
+                    :data-col="cell.col"
                     role="gridcell"
                     @click="makeMove(cell.row, cell.col)"
                   >
@@ -367,6 +369,8 @@ let pendingDragScrollLeft = 0
 let pendingDragScrollTop = 0
 let dragAnimationFrame = 0
 let dragMoved = false
+let dragPointerType = ''
+let dragStartCell: { row: number; col: number } | null = null
 let suppressBoardClick = false
 
 const keyFor = (row: number, col: number) => `${row},${col}`
@@ -656,6 +660,7 @@ const handleBoardPointerDown = (event: PointerEvent) => {
     dragAnimationFrame = 0
   }
   dragPointerId = event.pointerId
+  dragPointerType = event.pointerType
   dragStartX = event.clientX
   dragStartY = event.clientY
   dragStartScrollLeft = viewport.scrollLeft
@@ -663,6 +668,15 @@ const handleBoardPointerDown = (event: PointerEvent) => {
   pendingDragScrollLeft = viewport.scrollLeft
   pendingDragScrollTop = viewport.scrollTop
   dragMoved = false
+
+  const targetCell =
+    event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>('.board-cell:not(:disabled)')
+      : null
+  const row = Number(targetCell?.dataset.row)
+  const col = Number(targetCell?.dataset.col)
+  dragStartCell =
+    targetCell && Number.isSafeInteger(row) && Number.isSafeInteger(col) ? { row, col } : null
 }
 
 const flushDragPosition = () => {
@@ -682,7 +696,8 @@ const handleBoardPointerMove = (event: PointerEvent) => {
 
   const deltaX = event.clientX - dragStartX
   const deltaY = event.clientY - dragStartY
-  if (!dragMoved && Math.hypot(deltaX, deltaY) < 5) return
+  const dragThreshold = event.pointerType === 'touch' ? 14 : event.pointerType === 'pen' ? 9 : 5
+  if (!dragMoved && Math.hypot(deltaX, deltaY) < dragThreshold) return
 
   if (!dragMoved) {
     viewport.setPointerCapture(event.pointerId)
@@ -701,6 +716,13 @@ const handleBoardPointerUp = (event: PointerEvent) => {
   const viewport = boardViewport.value
   if (!viewport || dragPointerId !== event.pointerId) return
 
+  const shouldPlaceTouchedCell =
+    event.type === 'pointerup' &&
+    dragPointerType !== 'mouse' &&
+    !dragMoved &&
+    dragStartCell !== null
+  const touchedCell = dragStartCell
+
   if (viewport.hasPointerCapture(event.pointerId)) {
     viewport.releasePointerCapture(event.pointerId)
   }
@@ -708,11 +730,18 @@ const handleBoardPointerUp = (event: PointerEvent) => {
     window.cancelAnimationFrame(dragAnimationFrame)
     flushDragPosition()
   }
-  suppressBoardClick = dragMoved
+  suppressBoardClick = dragMoved || shouldPlaceTouchedCell
   dragPointerId = null
+  dragPointerType = ''
+  dragStartCell = null
   dragMoved = false
   isDragging.value = false
   updateViewportCenter()
+
+  if (shouldPlaceTouchedCell && touchedCell) {
+    event.preventDefault()
+    makeMove(touchedCell.row, touchedCell.col)
+  }
 
   window.setTimeout(() => {
     suppressBoardClick = false
@@ -722,6 +751,8 @@ const handleBoardPointerUp = (event: PointerEvent) => {
 const handleBoardPointerLeave = (event: PointerEvent) => {
   if (dragPointerId !== event.pointerId || dragMoved) return
   dragPointerId = null
+  dragPointerType = ''
+  dragStartCell = null
   isDragging.value = false
 }
 
