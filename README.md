@@ -8,6 +8,7 @@ ngang, hàng dọc hoặc đường chéo sẽ thắng.
 ## Tính năng
 
 - Bàn cờ theo hệ tọa độ không giới hạn, có thể cuộn theo mọi hướng.
+- Khung nhìn đứng yên sau mỗi nước; nhấn giữ rồi kéo để di chuyển bàn cờ.
 - Chỉ render vùng 35 × 35 ô đang nhìn thấy để giao diện luôn nhẹ.
 - Tạo phòng, chia sẻ mã phòng và chơi trực tuyến bằng Socket.IO.
 - Đấu với máy ở ba mức Dễ, Thường và Khó, chạy trực tiếp trên thiết bị.

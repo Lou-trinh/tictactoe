@@ -207,7 +207,7 @@
             <div class="board-toolbar">
               <div>
                 <strong>Bàn cờ vô hạn</strong>
-                <small>Cuộn để khám phá · Chạm ô kem để đặt quân</small>
+                <small>Giữ rồi kéo để di chuyển · Nhấp ô kem để đặt quân</small>
               </div>
               <div class="toolbar-actions">
                 <button @click="centerBoard(0, 0)">Về tâm</button>
@@ -224,8 +224,16 @@
               <div
                 ref="boardViewport"
                 class="board-viewport"
+                :class="{ dragging: isDragging }"
                 aria-label="Bàn cờ vô hạn"
                 @scroll="handleBoardScroll"
+                @pointerdown="handleBoardPointerDown"
+                @pointermove="handleBoardPointerMove"
+                @pointerup="handleBoardPointerUp"
+                @pointercancel="handleBoardPointerUp"
+                @pointerleave="handleBoardPointerLeave"
+                @click.capture="handleBoardClickCapture"
+                @dragstart.prevent
               >
                 <div class="infinite-grid" :style="boardGridStyle" role="grid">
                   <button
@@ -340,6 +348,7 @@ const isConnected = ref(false)
 const isJoining = ref(false)
 const notice = ref('')
 const copied = ref(false)
+const isDragging = ref(false)
 const boardViewport = ref<HTMLDivElement | null>(null)
 const originRow = ref(-GRID_CENTER)
 const originCol = ref(-GRID_CENTER)
@@ -349,7 +358,13 @@ let socket: Socket | null = null
 let noticeTimer = 0
 let aiMoveTimer = 0
 let adjustingViewport = false
-let renderedLastMoveKey = ''
+let dragPointerId: number | null = null
+let dragStartX = 0
+let dragStartY = 0
+let dragStartScrollLeft = 0
+let dragStartScrollTop = 0
+let dragMoved = false
+let suppressBoardClick = false
 
 const keyFor = (row: number, col: number) => `${row},${col}`
 
@@ -429,7 +444,6 @@ const resetLocalBoard = () => {
   winningCells.value = []
   moveCount.value = 0
   playerCount.value = 0
-  renderedLastMoveKey = ''
 }
 
 const joinGame = () => {
@@ -471,7 +485,6 @@ const applyLocalMove = (row: number, col: number, player: PlayerSymbol) => {
   board.value = nextBoard
   lastMove.value = { row, col, player }
   moveCount.value += 1
-  renderedLastMoveKey = key
 
   const winningLine = findWinningLine(nextBoard, row, col, player)
   if (winningLine) {
@@ -480,7 +493,6 @@ const applyLocalMove = (row: number, col: number, player: PlayerSymbol) => {
   } else {
     currentPlayer.value = player === 'X' ? 'O' : 'X'
   }
-  void nextTick(centerLatestMove)
 }
 
 const queueLocalAiMove = () => {
@@ -595,6 +607,10 @@ const shiftInfiniteGrid = (rowShift: number, colShift: number) => {
   void nextTick(() => {
     viewport.scrollTop = previousTop - rowShift * CELL_SIZE
     viewport.scrollLeft = previousLeft - colShift * CELL_SIZE
+    if (isDragging.value) {
+      dragStartScrollTop -= rowShift * CELL_SIZE
+      dragStartScrollLeft -= colShift * CELL_SIZE
+    }
     updateViewportCenter()
     window.requestAnimationFrame(() => {
       adjustingViewport = false
@@ -623,6 +639,65 @@ const handleBoardScroll = () => {
   shiftInfiniteGrid(rowShift, colShift)
 }
 
+const handleBoardPointerDown = (event: PointerEvent) => {
+  const viewport = boardViewport.value
+  if (!viewport || adjustingViewport || (event.pointerType === 'mouse' && event.button !== 0))
+    return
+
+  dragPointerId = event.pointerId
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  dragStartScrollLeft = viewport.scrollLeft
+  dragStartScrollTop = viewport.scrollTop
+  dragMoved = false
+  isDragging.value = true
+}
+
+const handleBoardPointerMove = (event: PointerEvent) => {
+  const viewport = boardViewport.value
+  if (!viewport || dragPointerId !== event.pointerId) return
+
+  const deltaX = event.clientX - dragStartX
+  const deltaY = event.clientY - dragStartY
+  if (!dragMoved && Math.hypot(deltaX, deltaY) < 5) return
+
+  if (!dragMoved) viewport.setPointerCapture(event.pointerId)
+  dragMoved = true
+  event.preventDefault()
+  viewport.scrollLeft = dragStartScrollLeft - deltaX
+  viewport.scrollTop = dragStartScrollTop - deltaY
+}
+
+const handleBoardPointerUp = (event: PointerEvent) => {
+  const viewport = boardViewport.value
+  if (!viewport || dragPointerId !== event.pointerId) return
+
+  if (viewport.hasPointerCapture(event.pointerId)) {
+    viewport.releasePointerCapture(event.pointerId)
+  }
+  suppressBoardClick = dragMoved
+  dragPointerId = null
+  dragMoved = false
+  isDragging.value = false
+
+  window.setTimeout(() => {
+    suppressBoardClick = false
+  }, 0)
+}
+
+const handleBoardPointerLeave = (event: PointerEvent) => {
+  if (dragPointerId !== event.pointerId || dragMoved) return
+  dragPointerId = null
+  isDragging.value = false
+}
+
+const handleBoardClickCapture = (event: MouseEvent) => {
+  if (!suppressBoardClick) return
+  event.preventDefault()
+  event.stopPropagation()
+  suppressBoardClick = false
+}
+
 const applyGameState = (payload: GameState) => {
   activeMode.value = payload.mode ?? activeMode.value ?? 'online'
   if (payload.difficulty) aiDifficulty.value = payload.difficulty
@@ -634,15 +709,6 @@ const applyGameState = (payload: GameState) => {
   winningCells.value = payload.winningCells
   moveCount.value = payload.moveCount
   playerCount.value = payload.playerCount
-
-  const nextMoveKey = payload.lastMove ? keyFor(payload.lastMove.row, payload.lastMove.col) : ''
-  if (nextMoveKey && nextMoveKey !== renderedLastMoveKey) {
-    renderedLastMoveKey = nextMoveKey
-    void nextTick(centerLatestMove)
-  } else if (!nextMoveKey && renderedLastMoveKey) {
-    renderedLastMoveKey = ''
-    void nextTick(() => centerBoard(0, 0))
-  }
 }
 
 const initSocket = () => {
@@ -1535,7 +1601,14 @@ button:disabled {
   scrollbar-color: #a66f40 #ead4a9;
   scrollbar-width: thin;
   background: #e5c993;
-  touch-action: pan-x pan-y;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.board-viewport.dragging,
+.board-viewport.dragging .board-cell {
+  cursor: grabbing;
 }
 
 .board-viewport::-webkit-scrollbar {
@@ -1557,6 +1630,7 @@ button:disabled {
   display: grid;
   width: max-content;
   background: #c79e65;
+  user-select: none;
 }
 
 .board-cell {
@@ -1569,16 +1643,17 @@ button:disabled {
   border-bottom: 1px solid rgba(123, 78, 40, 0.42);
   border-radius: 0;
   color: var(--ink);
+  cursor: inherit;
   background:
     radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.34), transparent 42%), #f3dfb2;
 }
 
 .board-cell:disabled {
-  cursor: default;
   opacity: 1;
+  pointer-events: none;
 }
 
-.board-cell:not(:disabled):hover {
+.board-viewport:not(.dragging) .board-cell:not(:disabled):hover {
   z-index: 1;
   outline: 2px solid #9f6c3d;
   outline-offset: -3px;
